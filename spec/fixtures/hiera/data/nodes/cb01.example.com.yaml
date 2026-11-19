@@ -1,0 +1,23 @@
+---
+# Shared by every member of the cluster: cb02/cb03 are symlinks to this file.
+# Nothing node-specific here - each node finds itself in cluster_nodes.
+couchbase::admin_password: 'changeme-please'
+couchbase::cluster_name: 'production'
+couchbase::cluster_nodes:
+  - 'cb01.example.com'
+  - 'cb02.example.com'
+  - 'cb03.example.com'
+couchbase::services: ['kv', 'n1ql', 'index']
+couchbase::data_ramsize: 4096
+couchbase::index_ramsize: 1024
+couchbase::buckets:
+  sessions:
+    bucket_type: 'ephemeral'
+    ram_quota: 512
+    replicas: 1
+couchbase::users:
+  webapp:
+    password: 'webapp-password'
+    display_name: 'Web application'
+couchbase::acls:
+  'user:webapp/bucket_full_access[sessions]': {}

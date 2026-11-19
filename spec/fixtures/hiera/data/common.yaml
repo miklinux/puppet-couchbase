@@ -1,0 +1,4 @@
+---
+lookup_options:
+  couchbase::admin_password:
+    convert_to: Sensitive

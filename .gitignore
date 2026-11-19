@@ -1,0 +1,7 @@
+/pkg/
+/spec/fixtures/modules/
+/spec/fixtures/manifests/
+/vendor/
+/.bundle/
+Gemfile.lock
+/coverage/
