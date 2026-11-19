@@ -17,7 +17,7 @@ has to be listed too:
 mod 'puppetlabs-stdlib', '9.7.0'
 
 mod 'couchbase',
-  git: 'git@github.com:miklinux/puppet-couchbase.git',
+  git: 'https://github.com/miklinux/puppet-couchbase.git',
   tag: 'v0.1.0'
 ```
 
@@ -25,18 +25,8 @@ mod 'couchbase',
   directory name in `modules/`, and the class is called `couchbase`.
 * Pin a release with `tag:`. Use `branch: 'main'` to follow development,
   or `ref: '<commit sha>'` to pin an exact commit.
-* The repository is private, so the Puppet server (r10k) needs read
-  access. The usual way is a read-only deploy key:
-  ```sh
-  # on the Puppet server, as the user r10k runs as
-  ssh-keygen -t ed25519 -N '' -f ~/.ssh/r10k_puppet-couchbase
-  # from a machine logged in to GitHub
-  gh repo deploy-key add ~/.ssh/r10k_puppet-couchbase.pub -R miklinux/puppet-couchbase --title r10k
-  ```
-  Then point SSH at the key for github.com (in `~/.ssh/config`, or in
-  r10k's `git: private_key:` setting). If the repository is made public,
-  `git: 'https://github.com/miklinux/puppet-couchbase.git'` works without
-  any credentials.
+* The repository is public, so the Puppet server needs no credentials or
+  keys to fetch it.
 
 Then deploy as usual (`r10k deploy environment -pv`, or a Code Manager
 deploy). The types and providers in `lib/` are synced to agents
@@ -46,7 +36,7 @@ automatically (pluginsync).
 
 ```sh
 puppet module install puppetlabs-stdlib --version 9.7.0
-git clone git@github.com:miklinux/puppet-couchbase.git /etc/puppetlabs/code/environments/production/modules/couchbase
+git clone --branch v0.1.0 https://github.com/miklinux/puppet-couchbase.git /etc/puppetlabs/code/environments/production/modules/couchbase
 ```
 
 ## How Puppet talks to Couchbase
