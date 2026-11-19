@@ -48,6 +48,41 @@ and the providers read that file at run time. This keeps credentials out of
 the individual resources. Set `PUPPET_COUCHBASE_CONFIG` to use a different
 file, for example in tests.
 
+## Admin account
+
+Couchbase has one built-in full administrator. Puppet creates it when it
+sets up the cluster, and uses it for every API call. Its name defaults to
+`Administrator`. To use another name, set it before the cluster is set up:
+
+```yaml
+couchbase::admin_user: 'admin'
+couchbase::admin_password: 'changeme-please'   # better: eyaml
+```
+
+On a multi-node cluster, use the same values on every node; the account
+belongs to the whole cluster.
+
+To rename the admin or change its password on a **running** cluster,
+change it in Couchbase first, then in Hiera:
+
+1. On any node, run:
+   ```sh
+   /opt/couchbase/bin/couchbase-cli setting-cluster -c localhost \
+     -u <current-name> -p '<current-password>' \
+     --cluster-username admin --cluster-password '<new-password>'
+   ```
+2. Set `couchbase::admin_user` and `couchbase::admin_password` to the new
+   values, and deploy.
+
+Between these two steps, Puppet runs fail with "authentication failed for
+'<old name>'" and change nothing. Other users and applications aren't
+affected. Puppet can't do the rename itself: once Couchbase has the new
+credentials, Puppet only knows the old ones, and changing Hiera first would
+lock Puppet out instead.
+
+Tested on Enterprise 7.6.3: a fresh setup as `admin`, and a rename of a
+running cluster with the command above.
+
 ## Usage
 
 ```puppet
@@ -148,6 +183,7 @@ data/nodes/cb03.example.com.yaml -> cb01.example.com.yaml
 
 ```yaml
 # data/nodes/cb01.example.com.yaml - shared by every member
+couchbase::admin_user: 'admin'                   # default: Administrator
 couchbase::admin_password: 'changeme-please'     # better: eyaml
 couchbase::cluster_name: 'production'
 couchbase::cluster_nodes: ['cb01.example.com', 'cb02.example.com', 'cb03.example.com']
@@ -200,7 +236,7 @@ failover follow standard Couchbase practice but aren't part of the test.
 In the examples, `cb` stands for:
 
 ```sh
-cb() { /opt/couchbase/bin/couchbase-cli "$@" -c localhost -u Administrator -p 'changeme-please'; }
+cb() { /opt/couchbase/bin/couchbase-cli "$@" -c localhost -u admin -p 'changeme-please'; }
 ```
 
 Run it on any node that stays in the cluster.
@@ -401,8 +437,8 @@ them, which deletes its data.
   Puppet doesn't start itself; it logs a warning.
 * Scopes and collections can be referenced in roles but are not managed
   as resources.
-* The admin password must be changed outside Puppet first. Then update
-  `admin_password`, which rewrites the client config.
+* Puppet doesn't rename the admin or change its password on a running
+  cluster (see "Admin account").
 * Groups, `compression_mode` and external users need Enterprise Edition.
 * Supports Couchbase Server 6.6 and later on systemd-based Linux.
 

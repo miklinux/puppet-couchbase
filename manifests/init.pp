@@ -9,7 +9,9 @@
 #   Password of the full admin account; used for cluster-init and by every
 #   couchbase_* provider. Accepts a Sensitive value.
 # @param admin_user
-#   Name of the full admin account.
+#   Name of the built-in full admin account, created when the cluster is
+#   set up. Changing it later requires renaming the account in Couchbase
+#   first (see "Admin account" in the README).
 # @param edition
 #   `enterprise` or `community`; selects the default package name.
 # @param package_name
