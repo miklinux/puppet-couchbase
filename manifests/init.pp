@@ -42,10 +42,10 @@
 #   bootstraps the cluster; the others join it. Empty means single node.
 # @param node_hostname
 #   Address of this node as the other members reach it (and as written in
-#   `cluster_nodes`). Defaults to 127.0.0.1 for a single node; otherwise the
-#   entry of `cluster_nodes` matching this node's FQDN, short hostname or one
-#   of its IP addresses (see couchbase::find_self), so the same Hiera data
-#   can be shared by every member.
+#   `cluster_nodes`). Defaults to 127.0.0.1 for a single node and to the
+#   node's FQDN otherwise, so the same Hiera data can be shared by every
+#   member when `cluster_nodes` lists FQDNs. It must be one of
+#   `cluster_nodes`, or compilation fails.
 # @param auto_rebalance
 #   Rebalance (and wait) when this node has been added to the cluster.
 # @param rebalance_timeout
@@ -128,8 +128,14 @@ class couchbase (
   $_node_hostname = $node_hostname.lest || {
     $cluster_nodes ? {
       []      => '127.0.0.1',
-      default => couchbase::find_self($cluster_nodes, $facts),
+      default => $facts['networking']['fqdn'],
     }
+  }
+
+  # A node outside the member list must not join (or rejoin, after being
+  # removed) the cluster just because it received the shared data.
+  if !$cluster_nodes.empty and !(downcase($_node_hostname) in $cluster_nodes.map |$n| { downcase($n) }) {
+    fail("couchbase: node_hostname '${_node_hostname}' is not in cluster_nodes (${cluster_nodes.join(', ')}); list this node there, or set couchbase::node_hostname")
   }
 
   contain couchbase::install

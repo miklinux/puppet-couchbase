@@ -197,13 +197,15 @@ couchbase::acls:
   'user:webapp/bucket_full_access[sessions]': {}
 ```
 
-Leave `couchbase::node_hostname` out of the shared file. Without it, each
-node finds its own entry in `cluster_nodes` by matching its FQDN, short
-hostname and every interface IP (`couchbase::find_self`), so the list can
-use any of these forms. If no entry matches, or more than one does, the
-catalog fails to compile rather than guess. In that case set
-`node_hostname` in a non-shared level, or interpolate it in the shared file
-(`couchbase::node_hostname: "%{facts.networking.ip}"`).
+List the members by FQDN and leave `couchbase::node_hostname` out of the
+shared file: each node then uses its own FQDN (`$facts['networking']['fqdn']`).
+The node's address must appear in `cluster_nodes`, otherwise its catalog
+fails to compile. That stops a host that isn't (or is no longer) a member
+from joining the cluster just because it received the shared data.
+
+To list members by IP address instead, interpolate the address in the
+shared file, so every node still gets the same file:
+`couchbase::node_hostname: "%{facts.networking.ip}"`.
 
 To keep the admin password Sensitive everywhere, add to `common.yaml`:
 
@@ -269,7 +271,7 @@ in `cluster_nodes`, its next run would join it to the cluster again.
 
 1. Remove the node from `couchbase::cluster_nodes`, delete its data file
    or symlink, and deploy the change. From then on that node's catalog
-   fails to compile ("none of cluster_nodes ... is this node"), so Puppet
+   fails to compile ("node_hostname ... is not in cluster_nodes"), so Puppet
    can't touch it, and the remaining nodes see nothing to change.
 2. Check that the remaining nodes have enough memory quota and disk for
    the data, and enough nodes left for each bucket's `replicas` and

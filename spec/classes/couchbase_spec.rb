@@ -68,13 +68,15 @@ describe 'couchbase' do
     let(:facts) { node_facts('cb02.example.com', '10.0.0.12') }
     let(:params) { { cluster_nodes: ['cb01', 'cb02', 'cb03'] } }
 
-    it { is_expected.to contain_couchbase_cluster('production').with_hostname('cb02') }
+    it 'requires node_hostname, since the FQDN is not listed' do
+      is_expected.to compile.and_raise_error(%r{node_hostname 'cb02.example.com' is not in cluster_nodes})
+    end
   end
 
-  context 'when the members are listed by IP address' do
+  context 'when the members are listed by IP address with node_hostname from facts' do
     let(:node) { 'cb03.example.com' }
     let(:facts) { node_facts('cb03.example.com', '10.0.0.13') }
-    let(:params) { { cluster_nodes: ['10.0.0.11', '10.0.0.12', '10.0.0.13'] } }
+    let(:params) { { cluster_nodes: ['10.0.0.11', '10.0.0.12', '10.0.0.13'], node_hostname: '10.0.0.13' } }
 
     it { is_expected.to contain_couchbase_cluster('production').with_hostname('10.0.0.13') }
   end
@@ -84,7 +86,7 @@ describe 'couchbase' do
     let(:facts) { node_facts('cb09.example.com', '10.0.0.19') }
     let(:params) { { admin_password: 'changeme-please', cluster_nodes: ['cb01.example.com', 'cb02.example.com'] } }
 
-    it { is_expected.to compile.and_raise_error(%r{none of cluster_nodes .* is this node.*set couchbase::node_hostname}) }
+    it { is_expected.to compile.and_raise_error(%r{node_hostname 'cb09.example.com' is not in cluster_nodes}) }
   end
 
   context 'with node_hostname set explicitly' do
@@ -92,7 +94,9 @@ describe 'couchbase' do
     let(:facts) { node_facts('cb01.example.com', '10.0.0.11') }
     let(:params) { { node_hostname: 'cb01-replication.example.com' } }
 
-    it { is_expected.to contain_couchbase_cluster('production').with_hostname('cb01-replication.example.com') }
+    it 'still has to be one of cluster_nodes' do
+      is_expected.to compile.and_raise_error(%r{'cb01-replication.example.com' is not in cluster_nodes})
+    end
   end
 
   context 'as a single node (no cluster_nodes)' do
