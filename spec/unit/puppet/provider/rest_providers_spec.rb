@@ -75,10 +75,27 @@ describe 'couchbase rest providers' do
 
   it 'grants acls without touching other roles' do
     apply(cluster, Puppet::Type.type(:couchbase_user).new(title: 'u', password: 'secret1', roles: ['admin']))
-    report = apply(Puppet::Type.type(:couchbase_acl).new(title: 'user:u/ro_admin'))
-    expect(report.resource_statuses['Couchbase_acl[user:u/ro_admin]'].changed).to be true
+    grant = -> { Puppet::Type.type(:couchbase_acl).new(title: 'u is read-only admin', user: 'u', role: 'ro_admin') }
+    report = apply(grant.call)
+    expect(report.resource_statuses['Couchbase_acl[u is read-only admin]'].changed).to be true
     expect(@fake.state[:users]['local/u'][:roles].split(',').sort).to eq(%w[admin ro_admin])
     expect(@fake.state[:users]['local/u'][:password]).to eq('secret1')
+
+    report = apply(grant.call)
+    expect(report.resource_statuses['Couchbase_acl[u is read-only admin]'].changed).to be false
+  end
+
+  it 'matches existing bucket-level grants and revokes them' do
+    apply(cluster, Puppet::Type.type(:couchbase_bucket).new(title: 'b', ram_quota: 128),
+          Puppet::Type.type(:couchbase_user).new(title: 'u', password: 'secret1'))
+    acl = ->(ensure_value) do
+      Puppet::Type.type(:couchbase_acl).new(title: 'u reads b', user: 'u', role: 'data_reader', bucket: 'b', ensure: ensure_value)
+    end
+    apply(acl.call(:present))
+    expect(@fake.state[:users]['local/u'][:roles]).to eq('data_reader[b]')
+    expect(apply(acl.call(:present)).resource_statuses['Couchbase_acl[u reads b]'].changed).to be false
+    apply(acl.call(:absent))
+    expect(@fake.state[:users]['local/u'][:roles]).to eq('')
   end
 
   it 'resets drifted passwords' do

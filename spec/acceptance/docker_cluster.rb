@@ -78,7 +78,7 @@ def manifest(node, nodes, auto_rebalance: true)
     }
     couchbase_bucket { 'shared': ram_quota => 128, replicas => 1 }
     couchbase_user { 'app': password => Sensitive('app-password') }
-    couchbase_acl { 'user:app/bucket_full_access[shared]': }
+    couchbase_acl { 'app full access to shared': user => 'app', role => 'bucket_full_access', bucket => 'shared' }
   PP
 end
 
@@ -129,7 +129,7 @@ def cluster_nodes(host)
 end
 
 CLUSTER_WIDE = ['Couchbase_bucket[shared]/ensure', 'Couchbase_user[app]/ensure',
-                'Couchbase_acl[user:app/bucket_full_access[shared]]/ensure'].freeze
+                'Couchbase_acl[app full access to shared]/ensure'].freeze
 
 def test_image(image)
   Dir.mktmpdir('cb-cluster') do |work|

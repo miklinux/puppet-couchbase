@@ -55,6 +55,15 @@ def pp_list(roles)
   "[#{roles.map { |r| "'#{r}'" }.join(', ')}]"
 end
 
+# Renders a couchbase_acl for user svc from a role in Couchbase syntax
+# ("data_reader[cache]"), using the type's parameters.
+def acl(label, role, ensure_value = 'present')
+  name, params = role.match(/\A([a-z_]+)(?:\[(.*)\])?\z/).captures
+  attrs = { 'user' => 'svc', 'role' => name, 'ensure' => ensure_value }
+  %w[bucket scope collection].zip(params.to_s.split(':')).each { |k, v| attrs[k] = v if v }
+  "couchbase_acl { '#{label}': #{attrs.map { |k, v| "#{k} => '#{v}'" }.join(', ')} }"
+end
+
 def create_manifest(f)
   <<~PP
     #{CLUSTER}
@@ -79,8 +88,8 @@ def create_manifest(f)
     }
     couchbase_user { 'svc': password => 'svc-pass-1' }
     couchbase_user { 'doomed': password => 'doomed-pass' }
-    couchbase_acl { 'user:svc/#{f[:roles][:acl_revoke]}': }
-    couchbase_acl { 'user:svc/#{f[:roles][:acl_keep]}': }
+    #{acl('svc revoke', f[:roles][:acl_revoke])}
+    #{acl('svc keep', f[:roles][:acl_keep])}
   PP
 end
 
@@ -88,7 +97,7 @@ def create_changes(f)
   [
     'Couchbase_bucket[data]/ensure', 'Couchbase_bucket[cache]/ensure', 'Couchbase_bucket[doomed]/ensure',
     'Couchbase_user[app]/ensure', 'Couchbase_user[svc]/ensure', 'Couchbase_user[doomed]/ensure',
-    "Couchbase_acl[user:svc/#{f[:roles][:acl_revoke]}]/ensure", "Couchbase_acl[user:svc/#{f[:roles][:acl_keep]}]/ensure"
+    'Couchbase_acl[svc revoke]/ensure', 'Couchbase_acl[svc keep]/ensure'
   ]
 end
 
@@ -123,9 +132,9 @@ def change_manifest(f)
     }
     couchbase_user { 'svc': password => 'not-applied', password_management => on_create }
     couchbase_user { 'doomed': ensure => absent }
-    couchbase_acl { 'user:svc/#{f[:roles][:acl_revoke]}': ensure => absent }
-    couchbase_acl { 'user:svc/#{f[:roles][:acl_keep]}': }
-    couchbase_acl { 'user:svc/#{f[:roles][:acl_add]}': }
+    #{acl('svc revoke', f[:roles][:acl_revoke], 'absent')}
+    #{acl('svc keep', f[:roles][:acl_keep])}
+    #{acl('svc add', f[:roles][:acl_add])}
   PP
 end
 
@@ -138,7 +147,7 @@ def change_changes(f)
     'Couchbase_bucket[doomed]/ensure',
     'Couchbase_user[app]/display_name', 'Couchbase_user[app]/password', 'Couchbase_user[app]/roles',
     'Couchbase_user[doomed]/ensure',
-    "Couchbase_acl[user:svc/#{f[:roles][:acl_revoke]}]/ensure", "Couchbase_acl[user:svc/#{f[:roles][:acl_add]}]/ensure"
+    'Couchbase_acl[svc revoke]/ensure', 'Couchbase_acl[svc add]/ensure'
   ]
   list += ['Couchbase_bucket[data]/max_ttl', 'Couchbase_bucket[cache]/max_ttl'] if f[:enterprise]
   list << 'Couchbase_bucket[data]/durability_min_level' if f[:durability]

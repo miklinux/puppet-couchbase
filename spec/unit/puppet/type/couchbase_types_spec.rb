@@ -4,24 +4,54 @@ require 'spec_helper'
 
 describe 'couchbase types' do
   describe Puppet::Type.type(:couchbase_acl) do
-    it 'derives principal and role from the title' do
-      acl = described_class.new(title: 'user:app/data_reader[b:*:*]')
-      expect(acl[:principal]).to eq('user:app')
-      expect(acl[:role]).to eq('data_reader[b]')
-      expect(acl.acl_key).to eq('user:app/data_reader[b]')
+    def acl(**params)
+      described_class.new(title: 'grant', **params)
     end
 
-    it 'accepts explicit parameters with a free-form title' do
-      acl = described_class.new(title: 'devs query', principal: 'group:devs', role: 'query_select[*]')
-      expect(acl.acl_key).to eq('group:devs/query_select[*]')
+    it 'builds a bucket-level grant from parameters' do
+      a = acl(user: 'app', role: 'data_reader', bucket: 'catalog')
+      expect(a.principal).to eq('user:app')
+      expect(a.role_spec).to eq('data_reader[catalog]')
     end
 
-    it 'requires principal and role' do
-      expect { described_class.new(title: 'whatever') }.to raise_error(Puppet::ResourceError, %r{set principal and role})
+    it 'builds collection-level, all-bucket and cluster-wide grants' do
+      expect(acl(user: 'app', role: 'data_writer', bucket: 'b', scope: 's', collection: 'c').role_spec).to eq('data_writer[b:s:c]')
+      expect(acl(group: 'devs', role: 'query_select', bucket: '*').acl_key).to eq('group:devs/query_select[*]')
+      expect(acl(user: 'mon', role: 'ro_admin').role_spec).to eq('ro_admin')
     end
 
-    it 'rejects bad principals' do
-      expect { described_class.new(title: 'x', principal: 'robot:x', role: 'admin') }.to raise_error(Puppet::ResourceError)
+    it 'treats wildcard scope and collection as the whole bucket' do
+      expect(acl(user: 'app', role: 'data_reader', bucket: 'b', scope: '*', collection: '*').role_spec).to eq('data_reader[b]')
+    end
+
+    it 'supports LDAP users' do
+      expect(acl(user: 'alice', domain: 'external', role: 'ro_admin').principal).to eq('external:alice')
+    end
+
+    it 'requires exactly one of user and group' do
+      expect { acl(role: 'ro_admin') }.to raise_error(Puppet::ResourceError, %r{either user or group})
+      expect { acl(user: 'a', group: 'b', role: 'ro_admin') }.to raise_error(Puppet::ResourceError, %r{either user or group})
+    end
+
+    it 'requires a role' do
+      expect { acl(user: 'a') }.to raise_error(Puppet::ResourceError, %r{role is required})
+    end
+
+    it 'asks for bucket/scope/collection parameters instead of the bracket syntax' do
+      expect { acl(user: 'a', role: 'data_reader[b]') }.to raise_error(Puppet::ResourceError, %r{set bucket, scope and collection as parameters})
+    end
+
+    it 'requires bucket for scope and scope for collection' do
+      expect { acl(user: 'a', role: 'data_reader', scope: 's') }.to raise_error(Puppet::ResourceError, %r{scope requires bucket})
+      expect { acl(user: 'a', role: 'data_reader', bucket: 'b', collection: 'c') }.to raise_error(Puppet::ResourceError, %r{collection requires scope})
+    end
+
+    it 'refuses two resources granting the same role' do
+      catalog = Puppet::Resource::Catalog.new
+      catalog.add_resource(acl(user: 'app', role: 'data_reader', bucket: 'b'))
+      twin = described_class.new(title: 'again', user: 'app', role: 'data_reader', bucket: 'b', scope: '*')
+      catalog.add_resource(twin)
+      expect { twin.pre_run_check }.to raise_error(Puppet::Error, %r{both manage data_reader\[b\] for user:app})
     end
   end
 

@@ -39,8 +39,16 @@ couchbase_user { 'indexer':
   password => Sensitive('indexer-password'),
   groups   => ['developers'],
 }
-couchbase_acl { 'user:indexer/data_reader[catalog:inventory]': }
-couchbase_acl { 'indexer can write the catalog products':
-  principal => 'user:indexer',
-  role      => 'data_writer[catalog:inventory:products]',
+couchbase_acl { 'indexer reads the catalog inventory':
+  user   => 'indexer',
+  role   => 'data_reader',
+  bucket => 'catalog',
+  scope  => 'inventory',
+}
+couchbase_acl { 'indexer writes the catalog products':
+  user       => 'indexer',
+  role       => 'data_writer',
+  bucket     => 'catalog',
+  scope      => 'inventory',
+  collection => 'products',
 }

@@ -20,4 +20,7 @@ couchbase::users:
     password: 'webapp-password'
     display_name: 'Web application'
 couchbase::acls:
-  'user:webapp/bucket_full_access[sessions]': {}
+  webapp full access to sessions:
+    user: 'webapp'
+    role: 'bucket_full_access'
+    bucket: 'sessions'

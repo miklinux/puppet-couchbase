@@ -49,7 +49,8 @@ describe 'couchbase' do
       it 'declares the same cluster-wide resources everywhere' do
         is_expected.to contain_couchbase_bucket('sessions').with(bucket_type: 'ephemeral', ram_quota: 512)
         is_expected.to contain_couchbase_user('webapp').with(display_name: 'Web application')
-        is_expected.to contain_couchbase_acl('user:webapp/bucket_full_access[sessions]')
+        is_expected.to contain_couchbase_acl('webapp full access to sessions')
+          .with(user: 'webapp', role: 'bucket_full_access', bucket: 'sessions')
       end
 
       it 'keeps the admin password out of the catalog in clear' do
@@ -115,6 +116,23 @@ describe 'couchbase' do
     let(:params) { { admin_password: 'changeme-please', services: ['data', 'cache'] } }
 
     it { is_expected.to compile.and_raise_error(%r{services}) }
+  end
+
+  context 'README "Quick start" example' do
+    let(:node) { 'standalone.example.com' }
+    let(:facts) { node_facts('standalone.example.com', '10.0.0.50') }
+    let(:params) do
+      {
+        admin_user: 'admin', admin_password: sensitive('changeme-please'),
+        services: ['data', 'query', 'index'], data_ramsize: 2048, index_ramsize: 512,
+        buckets: { 'sessions' => { 'bucket_type' => 'ephemeral', 'ram_quota' => 256 } },
+        users: { 'webapp' => { 'password' => sensitive('webapp-password'), 'roles' => ['bucket_full_access[sessions]'] } },
+      }
+    end
+
+    it { is_expected.to compile.with_all_deps }
+    it { is_expected.to contain_couchbase_bucket('sessions').with(bucket_type: 'ephemeral', ram_quota: 256) }
+    it { is_expected.to contain_couchbase_user('webapp').with_roles(['bucket_full_access[sessions]']) }
   end
 
   describe 'README "Common setups"' do

@@ -14,8 +14,6 @@ module PuppetX
     #     are dropped (`data_reader[b:*:*]` == `data_reader[b]`), while the
     #     bucket is always kept (`bucket_admin[*]`).
     module Role
-      # `<principal>/<role>` titles of couchbase_acl resources.
-      ACL_TITLE_RE = %r{\A((?:user|external|group):[^/]+)/(.+)\z}.freeze
       ROLE_RE = /\A\s*([a-z][a-z0-9_]*)\s*(?:\[\s*([^\]]*?)\s*\])?\s*\z/
 
       module_function

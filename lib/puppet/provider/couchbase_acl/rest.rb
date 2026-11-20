@@ -7,14 +7,32 @@ Puppet::Type.type(:couchbase_acl).provide(:rest, parent: Puppet::Provider::Couch
 
   mk_resource_methods
 
+  # One existing grant, described with the type's parameters. The name is
+  # the grant's identity (principal/role), shown by `puppet resource`.
+  def self.grant(principal_kind, id, role)
+    name, params = PuppetX::Couchbase::Role.parse(role)
+    hash = { name: "#{principal_kind}:#{id}/#{role}", ensure: :present, role: name }
+    if principal_kind == 'group'
+      hash[:group] = id
+    else
+      hash[:user] = id
+      hash[:domain] = principal_kind == 'external' ? :external : :local
+    end
+    %i[bucket scope collection].zip(params).each { |key, value| hash[key] = value if value }
+    new(hash)
+  end
+
+  # Grant details of a resource found on the server (nil otherwise).
+  def discovered(attribute)
+    @property_hash[attribute]
+  end
+
   def self.instances
     with_client do |c|
       acls = []
       Array(c.get('/settings/rbac/users')).each do |u|
         kind = u['domain'].to_s == 'external' ? 'external' : 'user'
-        PuppetX::Couchbase::Role.direct_from_api(u['roles']).each do |role|
-          acls << new(name: "#{kind}:#{u['id']}/#{role}", principal: "#{kind}:#{u['id']}", role: role, ensure: :present)
-        end
+        PuppetX::Couchbase::Role.direct_from_api(u['roles']).each { |role| acls << grant(kind, u['id'], role) }
       end
       groups = begin
         c.get('/settings/rbac/groups')
@@ -24,9 +42,7 @@ Puppet::Type.type(:couchbase_acl).provide(:rest, parent: Puppet::Provider::Couch
         []
       end
       Array(groups).each do |g|
-        PuppetX::Couchbase::Role.direct_from_api(g['roles']).each do |role|
-          acls << new(name: "group:#{g['id']}/#{role}", principal: "group:#{g['id']}", role: role, ensure: :present)
-        end
+        PuppetX::Couchbase::Role.direct_from_api(g['roles']).each { |role| acls << grant('group', g['id'], role) }
       end
       acls
     end
@@ -41,20 +57,19 @@ Puppet::Type.type(:couchbase_acl).provide(:rest, parent: Puppet::Provider::Couch
   end
 
   def create
-    update_roles { |roles| roles | [resource[:role]] }
+    update_roles { |roles| roles | [resource.role_spec] }
     @property_hash[:ensure] = :present
   end
 
   def destroy
-    update_roles { |roles| roles - [resource[:role]] }
+    update_roles { |roles| roles - [resource.role_spec] }
     @property_hash[:ensure] = :absent
   end
 
   private
 
   def principal_parts
-    kind, id = resource[:principal].split(':', 2)
-    [kind, id]
+    resource.principal.split(':', 2)
   end
 
   # Read the principal fresh (other acl resources may have touched it in the
@@ -69,7 +84,7 @@ Puppet::Type.type(:couchbase_acl).provide(:rest, parent: Puppet::Provider::Couch
 
     with_client do |c|
       current = c.get_or_nil(path)
-      raise Puppet::Error, "couchbase_acl[#{resource[:name]}]: #{resource[:principal]} does not exist" if current.nil?
+      raise Puppet::Error, "couchbase_acl[#{resource[:name]}]: #{kind} '#{id}' does not exist" if current.nil?
 
       roles = yield(PuppetX::Couchbase::Role.direct_from_api(current['roles'])).uniq.sort
       params = if kind == 'group'
