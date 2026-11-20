@@ -117,11 +117,49 @@ describe 'couchbase' do
     it { is_expected.to compile.and_raise_error(%r{services}) }
   end
 
+  describe 'README "Common setups"' do
+    let(:node) { 'standalone.example.com' }
+    let(:facts) { node_facts('standalone.example.com', '10.0.0.50') }
+
+    context 'Community Edition from the download site' do
+      let(:params) do
+        { admin_password: 'changeme-please', edition: 'community',
+          package_source: 'https://packages.couchbase.com/releases/7.6.2/couchbase-server-community_7.6.2-linux_amd64.deb' }
+      end
+
+      it { is_expected.to compile.with_all_deps }
+      it { is_expected.to contain_package('couchbase-server-community').with(provider: 'dpkg', source: '/var/cache/couchbase-puppet/couchbase-server-community_7.6.2-linux_amd64.deb') }
+    end
+
+    context 'only managing resources on an existing installation' do
+      let(:params) do
+        { admin_password: 'changeme-please', manage_package: false, manage_service: false, manage_cluster: false,
+          buckets: { 'sessions' => { 'ram_quota' => 256 } } }
+      end
+
+      it { is_expected.to compile.with_all_deps }
+      it { is_expected.not_to contain_package('couchbase-server') }
+      it { is_expected.not_to contain_service('couchbase-server') }
+      it { is_expected.not_to contain_class('couchbase::cluster') }
+      it { is_expected.to contain_file('/etc/couchbase/puppet.json') }
+      it { is_expected.to contain_couchbase_bucket('sessions').with_ram_quota(256) }
+    end
+  end
+
   context 'as a single node (no cluster_nodes)' do
     let(:node) { 'standalone.example.com' }
     let(:facts) { node_facts('standalone.example.com', '10.0.0.50') }
     let(:params) { { admin_password: 'changeme-please' } }
 
     it { is_expected.to contain_couchbase_cluster('couchbase').with(hostname: '127.0.0.1', cluster_nodes: []) }
+  end
+end
+
+describe 'couchbase::cluster' do
+  let(:node) { 'standalone.example.com' }
+  let(:facts) { node_facts('standalone.example.com', '10.0.0.50') }
+
+  it 'cannot be declared directly' do
+    is_expected.to compile.and_raise_error(%r{private})
   end
 end

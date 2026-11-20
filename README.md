@@ -18,7 +18,7 @@ mod 'puppetlabs-stdlib', '9.7.0'
 
 mod 'couchbase',
   git: 'https://github.com/miklinux/puppet-couchbase.git',
-  tag: 'v0.1.1'
+  tag: 'v0.1.2'
 ```
 
 * The module name (`'couchbase'`) must stay as it is. It becomes the
@@ -36,7 +36,7 @@ automatically (pluginsync).
 
 ```sh
 puppet module install puppetlabs-stdlib --version 9.7.0
-git clone --branch v0.1.1 https://github.com/miklinux/puppet-couchbase.git /etc/puppetlabs/code/environments/production/modules/couchbase
+git clone --branch v0.1.2 https://github.com/miklinux/puppet-couchbase.git /etc/puppetlabs/code/environments/production/modules/couchbase
 ```
 
 ## How Puppet talks to Couchbase
@@ -62,26 +62,87 @@ couchbase::admin_password: 'changeme-please'   # better: eyaml
 On a multi-node cluster, use the same values on every node; the account
 belongs to the whole cluster.
 
-To rename the admin or change its password on a **running** cluster,
-change it in Couchbase first, then in Hiera:
+### Renaming the admin or changing its password
 
-1. On any node, run:
-   ```sh
-   /opt/couchbase/bin/couchbase-cli setting-cluster -c localhost \
-     -u <current-name> -p '<current-password>' \
-     --cluster-username admin --cluster-password '<new-password>'
-   ```
-2. Set `couchbase::admin_user` and `couchbase::admin_password` to the new
-   values, and deploy.
+On a running cluster, always change the credentials **in Couchbase first,
+then in Hiera**. Puppet logs in with the credentials from Hiera, so it can't
+rename the account it's logged in with. If you change Hiera first, Puppet
+is simply locked out (HTTP 401) until Couchbase matches; nothing breaks,
+just carry on with step 2.
 
-Between these two steps, Puppet runs fail with "authentication failed for
-'<old name>'" and change nothing. Other users and applications aren't
-affected. Puppet can't do the rename itself: once Couchbase has the new
-credentials, Puppet only knows the old ones, and changing Hiera first would
-lock Puppet out instead.
+The admin belongs to the whole cluster: run the command once, on any one
+node, and every node uses the new credentials immediately.
 
-Tested on Enterprise 7.6.3: a fresh setup as `admin`, and a rename of a
-running cluster with the command above.
+**1. Prepare**
+
+* List everything else that logs in as the admin: applications and SDK
+  connections, monitoring, backup jobs (`cbbackupmgr`), scripts, and XDCR
+  remote cluster references on **other** clusters that replicate to or
+  from this one. They stop working at step 2 until you update them. Giving
+  them their own users (`couchbase_user`) avoids this next time.
+* Optionally pause Puppet on the cluster nodes, so the runs between steps 2
+  and 4 don't fail and raise alerts:
+  ```sh
+  puppet agent --disable 'renaming the Couchbase admin'
+  ```
+
+**2. Change the credentials in Couchbase** (on any one node)
+
+```sh
+/opt/couchbase/bin/couchbase-cli setting-cluster -c localhost \
+  -u Administrator -p '<current-password>' \
+  --cluster-username admin --cluster-password '<new-password>'
+```
+
+Expect `SUCCESS: Cluster settings modified`. Check it on every node: the
+new credentials work and the old ones don't.
+
+```sh
+curl -s -o /dev/null -w '%{http_code}\n' -u 'admin:<new-password>' http://localhost:8091/pools/default          # 200
+curl -s -o /dev/null -w '%{http_code}\n' -u 'Administrator:<current-password>' http://localhost:8091/pools/default # 401
+```
+
+**3. Update Hiera and deploy**
+
+```yaml
+couchbase::admin_user: 'admin'
+couchbase::admin_password: '<new-password>'   # better: eyaml
+```
+
+With a shared (symlinked) Hiera file, this one edit covers every node.
+Deploy as usual (`r10k deploy environment -pv`, or Code Manager).
+
+**4. Run Puppet on every node**
+
+```sh
+puppet agent --enable    # if you disabled it in step 1
+puppet agent -t
+```
+
+Each run rewrites `/etc/couchbase/puppet.json` with the new credentials and
+should report no other changes. Then update the consumers from step 1.
+
+Until step 4, Puppet runs on the cluster fail with "authentication failed
+for 'Administrator'" and change nothing. Data, buckets and other users
+aren't affected.
+
+**Changing only the password.** Same procedure, but keep the name in
+step 2 (`--cluster-username` with the current name) and change only
+`couchbase::admin_password` in step 3. If you've lost the current password,
+use this instead in step 2. It runs as root on any node and doesn't need
+the old password:
+
+```sh
+/opt/couchbase/bin/couchbase-cli reset-admin-password --new-password '<new-password>'
+```
+
+**Rolling back.** Run step 2 again with the names swapped (log in with the
+new credentials, set the old ones), and revert the Hiera change.
+
+Tested on a 2-node Community 7.6.2 cluster (rename on one node, both nodes
+switched; Puppet failed cleanly with the old credentials and ran with no
+changes using the new ones; password-only change with both commands) and
+on a single Enterprise 7.6.3 node.
 
 ## Usage
 
@@ -130,6 +191,125 @@ package_source => 'https://packages.couchbase.com/releases/7.6.3/couchbase-serve
 ```
 
 See `examples/init.pp` for a fuller example.
+
+## Classes
+
+### `couchbase` (public)
+
+This is the only class you declare, either with `include couchbase` and
+Hiera data, or with resource-style `class { 'couchbase': ... }`. It runs
+these steps in order, each in its own private class:
+
+```
+couchbase::install -> couchbase::service -> couchbase::config -> couchbase::cluster
+```
+
+It then declares `couchbase_bucket`, `couchbase_group`, `couchbase_user`
+and `couchbase_acl` resources from the `buckets`, `groups`, `users` and
+`acls` hashes.
+
+The only required parameter is `admin_password`.
+
+**Admin account**
+
+| Parameter | Default | Description |
+|---|---|---|
+| `admin_password` | *(required)* | Password of the built-in full admin. String or `Sensitive`, at least 6 characters. |
+| `admin_user` | `'Administrator'` | Name of the built-in full admin. Set it before the cluster is first set up (see "Admin account"). |
+
+**Package and service**
+
+| Parameter | Default | Description |
+|---|---|---|
+| `edition` | `'enterprise'` | `enterprise` or `community`. Selects the default package name. |
+| `package_name` | `couchbase-server` / `couchbase-server-community` | Overrides the package name. |
+| `package_ensure` | `'installed'` | `installed`, `latest` or a version. |
+| `package_source` | `undef` | URL of a `.deb` or `.rpm` to install, instead of a configured repository. |
+| `manage_package` | `true` | Set to `false` to install Couchbase some other way. |
+| `manage_service` | `true` | Set to `false` without systemd, for example in containers. |
+| `service_name` | `'couchbase-server'` | systemd service name. |
+
+**REST API access**
+
+| Parameter | Default | Description |
+|---|---|---|
+| `api_url` | `'http://127.0.0.1:8091'` | The local REST API used by every `couchbase_*` resource. |
+| `api_timeout` | `180` | Seconds to wait for the API to come up, for example after installation. |
+
+**Cluster**
+
+| Parameter | Default | Description |
+|---|---|---|
+| `manage_cluster` | `true` | Set up or join the cluster and manage its settings. Set to `false` when the cluster is set up some other way; buckets, users and so on are still managed. |
+| `cluster_name` | `'couchbase'` | Shown in the UI. Use the same value on every node. |
+| `cluster_nodes` | `[]` | All members, the same list on every node. The first one creates the cluster. Leave it empty for a single node. |
+| `node_hostname` | `127.0.0.1` for a single node, otherwise the FQDN | This node's address as the others reach it. It must be one of `cluster_nodes`. |
+| `services` | `['kv', 'n1ql', 'index']` | Services on this node: `data`/`kv`, `query`/`n1ql`, `index`, `search`/`fts`, `analytics`/`cbas`, `eventing`, `backup`. Only used when the node creates or joins the cluster. |
+| `index_storage_mode` | `plasma` (EE) / `forestdb` (CE) | `plasma`, `memory_optimized` or `forestdb`. Only used when the cluster is created. |
+| `auto_rebalance` | `true` | Rebalance (and wait) after this node joins. |
+| `rebalance_timeout` | `3600` | Seconds to wait for a rebalance. |
+
+**Memory quotas** (MB, for the whole cluster, so keep them the same on
+every node; `undef` leaves the current value alone)
+
+| Parameter | Service |
+|---|---|
+| `data_ramsize` | Data (kv) |
+| `index_ramsize` | Index |
+| `fts_ramsize` | Search |
+| `eventing_ramsize` | Eventing |
+| `analytics_ramsize` | Analytics (at least 1024) |
+
+**Resources** (hashes of resource title => attributes; see "Types")
+
+| Parameter | Declares |
+|---|---|
+| `buckets` | `couchbase_bucket` |
+| `users` | `couchbase_user` |
+| `groups` | `couchbase_group` |
+| `acls` | `couchbase_acl` |
+
+### Private classes
+
+You can't declare these yourself (they fail with `assert_private`). Each
+one is switched by a `couchbase` parameter:
+
+| Class | What it does | Skipped with |
+|---|---|---|
+| `couchbase::install` | Installs the package, from a repository or from `package_source` (downloaded to `/var/cache/couchbase-puppet`). | `manage_package => false` |
+| `couchbase::service` | Starts and enables `couchbase-server`. | `manage_service => false` |
+| `couchbase::config` | Writes `/etc/couchbase/puppet.json` (root, `0600`): the API URL and admin credentials used by the `couchbase_*` providers. | always declared |
+| `couchbase::cluster` | Declares `couchbase_cluster`: creates or joins the cluster, rebalances, sets the name and quotas. | `manage_cluster => false` |
+
+### Common setups
+
+```puppet
+# Single node from a configured package repository
+class { 'couchbase':
+  admin_password => Sensitive('changeme-please'),
+}
+
+# Community Edition straight from the download site
+class { 'couchbase':
+  admin_password => Sensitive('changeme-please'),
+  edition        => 'community',
+  package_source => 'https://packages.couchbase.com/releases/7.6.2/couchbase-server-community_7.6.2-linux_amd64.deb',
+}
+
+# Couchbase installed and set up some other way (for example an image):
+# only manage buckets, users and ACLs
+class { 'couchbase':
+  admin_password => Sensitive('changeme-please'),
+  manage_package => false,
+  manage_service => false,
+  manage_cluster => false,
+  buckets        => { 'sessions' => { 'ram_quota' => 256 } },
+}
+```
+
+The `couchbase_*` types can also be used without the class. In that case,
+write `/etc/couchbase/puppet.json` yourself, as `couchbase::config` does:
+`{"url": "http://127.0.0.1:8091", "username": "...", "password": "..."}`.
 
 ## Multi-node clusters
 
@@ -373,6 +553,18 @@ Passwords can't be read back from Couchbase. To check one, Puppet tries to
 authenticate as the user (`GET /whoami`) and resets the password if that
 fails. Set `password_management => on_create` to set the password only when
 the user is created. Passwords are always redacted in logs and reports.
+
+## Facts
+
+| Fact | Example | Description |
+|---|---|---|
+| `couchbase_version` | `7.6.3-4200` | Version and build of the installed Couchbase Server, read from `/opt/couchbase/VERSION.txt`. Not set when Couchbase isn't installed, which includes the run that installs it. |
+
+```puppet
+if $facts['couchbase_version'] and versioncmp($facts['couchbase_version'], '7.6') >= 0 {
+  # 7.6+ only: on a single node, durability above 'none' is refused
+}
+```
 
 ## Compatibility
 
