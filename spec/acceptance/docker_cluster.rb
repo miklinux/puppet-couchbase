@@ -117,7 +117,8 @@ def run_node(work, node, nodes, **opts)
   File.write(file, manifest(node, nodes, **opts))
   out, = Open3.capture2e({ 'PUPPET_COUCHBASE_CONFIG' => File.join(dir, 'client.json') },
                          'puppet', 'apply', '--color=false', '--modulepath', File.join(work, 'modules'),
-                         '--vardir', File.join(dir, 'var'), '--confdir', File.join(dir, 'conf'), file)
+                         '--vardir', File.join(dir, 'var'), '--confdir', File.join(dir, 'conf'),
+                         '--publicdir', File.join(dir, 'public'), file)
   changes = out.scan(%r{^Notice: /Stage\[main\]/Main/(Couchbase_\w+\[.*\])/(\w+): }).map { |r, p| "#{r}/#{p}" }.to_set
   { node: node, changes: changes, errors: out.lines.grep(/^Error:/), out: out }
 end

@@ -187,7 +187,8 @@ def apply(work, name, manifest)
   env = { 'PUPPET_COUCHBASE_CONFIG' => File.join(work, 'client.json') }
   out, = Open3.capture2e(env, 'puppet', 'apply', '--color=false', '--detailed-exitcodes',
                          '--modulepath', File.join(work, 'modules'), '--vardir', File.join(work, 'var'),
-                         '--confdir', File.join(work, 'conf'), '--codedir', File.join(work, 'code'), file)
+                         '--confdir', File.join(work, 'conf'), '--codedir', File.join(work, 'code'),
+                         '--publicdir', File.join(work, 'public'), file)
   changes = out.scan(%r{^Notice: /Stage\[main\]/Main/(Couchbase_\w+\[.*\])/(\w+): }).map { |r, p| "#{r}/#{p}" }
   errors = out.lines.grep(/^Error:/)
   warnings = out.lines.grep(/^Warning:/)

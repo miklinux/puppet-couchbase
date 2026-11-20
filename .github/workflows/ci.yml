@@ -31,7 +31,7 @@ jobs:
       PUPPET_GEM_VERSION: '~> ${{ matrix.puppet }}.0'
       BUNDLE_WITHOUT: ${{ matrix.without }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: ${{ matrix.ruby }}
@@ -60,7 +60,7 @@ jobs:
     env:
       PUPPET_GEM_VERSION: '~> 8.0'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.2'
@@ -87,7 +87,7 @@ jobs:
     env:
       PUPPET_GEM_VERSION: '~> 8.0'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.2'
