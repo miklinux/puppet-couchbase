@@ -58,6 +58,31 @@ def cb_cli(*args)
      '-c', 'localhost', '-u', ADMIN[0], '-p', ADMIN[1])
 end
 
+# Community 7.6.x ships a couchbase-cli whose `rebalance` and `failover`
+# fail with "Unable to get the HTTPS port"; the README gives the equivalent
+# REST calls, which are run here in that case.
+HTTPS_PORT_BUG = /Unable to get the HTTPS port/
+
+def cb_cli_or_rest(args, rest)
+  cb_cli(*args)
+rescue Failure => e
+  raise unless e.message.match?(HTTPS_PORT_BUG)
+
+  puts "  couchbase-cli #{args.first} hit the CE 7.6 HTTPS port bug, using the README REST fallback"
+  api = "api() { curl -fsS -u '#{ADMIN.join(':')}' \"http://localhost:8091$1\" \"${@:2}\"; }"
+  known = "known=$(/opt/couchbase/bin/couchbase-cli server-list -c localhost -u #{ADMIN[0]} -p #{ADMIN[1]} | awk '{print $1}' | paste -sd,)"
+  sh('docker', 'exec', 'cb-acc-1', 'bash', '-c', [api, known, rest].join("\n"))
+  # The REST call only starts the rebalance; wait for it like the CLI does.
+  600.times do
+    _c, st = http(ip(1), '/pools/default/rebalanceProgress')
+    break if st.is_a?(Hash) && st['status'] == 'none'
+
+    sleep 1
+  end
+end
+
+def otp(i) = "ns_1@#{ip(i)}"
+
 def sh(*cmd)
   out, status = Open3.capture2e(*cmd)
   raise Failure, "#{cmd.join(' ')} failed:\n#{out}" unless status.success?
@@ -189,7 +214,8 @@ def test_image(image)
 
       # 5. graceful removal of node 3
       rest = [1, 2, 4]
-      cb_cli('rebalance', '--server-remove', "#{ip(3)}:8091")
+      cb_cli_or_rest(['rebalance', '--server-remove', "#{ip(3)}:8091"],
+                     %(api /controller/rebalance -d knownNodes="$known" -d ejectedNodes=#{otp(3)}))
       members = cluster_nodes(ip(1))
       check('node3 rebalanced out, 3 active nodes left',
             members.size == 3 && members.none? { |n| n['hostname'].start_with?("#{ip(3)}:") })
@@ -209,8 +235,9 @@ def test_image(image)
       # 6. node 4 dies and is replaced by an empty node at the same address
       sh('docker', 'kill', 'cb-acc-4')
       sleep 10
-      cb_cli('failover', '--server-failover', "#{ip(4)}:8091", '--hard')
-      cb_cli('rebalance')
+      cb_cli_or_rest(['failover', '--server-failover', "#{ip(4)}:8091", '--hard'],
+                     %(api /controller/failOver -d otpNode=#{otp(4)}))
+      cb_cli_or_rest(['rebalance'], %(api /controller/rebalance -d knownNodes="$known" -d ejectedNodes=))
       check('dead node4 failed over and rebalanced out', cluster_nodes(ip(1)).size == 2)
       sh('docker', 'rm', '-f', 'cb-acc-4')
       sh('docker', 'run', '-d', '--name', 'cb-acc-4', '--network', NETWORK, '--ip', ip(4), image)

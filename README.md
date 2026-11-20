@@ -47,7 +47,7 @@ mod 'puppetlabs-stdlib', '9.7.0'
 
 mod 'couchbase',
   git: 'https://github.com/miklinux/puppet-couchbase.git',
-  tag: 'v0.2.0'
+  tag: 'v0.2.1'
 ```
 
 Pin a release with `tag:`, follow development with `branch: 'main'`, or pin a
@@ -57,7 +57,7 @@ Without r10k:
 
 ```sh
 puppet module install puppetlabs-stdlib --version 9.7.0
-git clone --branch v0.2.0 https://github.com/miklinux/puppet-couchbase.git \
+git clone --branch v0.2.1 https://github.com/miklinux/puppet-couchbase.git \
   /etc/puppetlabs/code/environments/production/modules/couchbase
 ```
 
@@ -376,6 +376,31 @@ The first node in `cluster_nodes` is only special while no cluster exists.
 Rebuild or retire it like any other node: a rebuilt first node joins the
 running cluster instead of creating a new one.
 
+### When couchbase-cli rebalance or failover fails
+
+On Community 7.6.2, `cb rebalance` and `cb failover` stop with
+`ERROR: Unable to get the HTTPS port of the … node`. This is a `couchbase-cli`
+bug (Community Edition has no HTTPS management port); the cluster itself is
+fine. Make the same calls through the REST API:
+
+```sh
+api() { curl -fsS -u 'admin:changeme-please' "http://localhost:8091$1" "${@:2}"; }
+known=$(cb server-list | awk '{print $1}' | paste -sd,)   # every node, e.g. ns_1@cb01.example.com,...
+
+# cb rebalance --server-remove cb03.example.com:8091
+api /controller/rebalance -d knownNodes="$known" -d ejectedNodes=ns_1@cb03.example.com
+
+# cb failover --server-failover cb03.example.com:8091 --hard
+api /controller/failOver -d otpNode=ns_1@cb03.example.com
+
+# cb rebalance
+api /controller/rebalance -d knownNodes="$known" -d ejectedNodes=
+```
+
+Node names are the first column of `cb server-list`. Unlike `couchbase-cli`,
+the REST calls return as soon as the rebalance starts; follow it with
+`cb rebalance-status` or in the web console.
+
 ### Move to new hardware or change a node's services
 
 Couchbase can't change the services of a node that is already in a cluster.
@@ -557,10 +582,17 @@ expected changes, with nothing left to change afterwards.
 
 | Couchbase Server | Community | Enterprise |
 |---|---|---|
-| 6.6.0 | ✓ single node, cluster | |
-| 7.0.2, 7.1.1, 7.2.4 | ✓ single node | |
-| 7.6 | ✓ single node (7.6.2) | ✓ single node, cluster (7.6.3) |
-| 8.0.2 | ✓ single node, cluster | |
+| 6.6 | 6.6.0: single node, cluster | |
+| 7.0 | 7.0.2: single node, cluster | 7.0.5: cluster |
+| 7.1 | 7.1.1: single node, cluster | 7.1.6: cluster |
+| 7.2 | 7.2.4: single node, cluster | 7.2.6: cluster |
+| 7.6 | 7.6.2: single node, cluster | 7.6.3: single node, cluster; 7.6.6: cluster |
+| 8.0 | 8.0.2: single node, cluster | |
+
+"Cluster" means the full multi-node scenario: three nodes bootstrapping and
+joining concurrently, a fourth added with and without `auto_rebalance`, then
+the [Operations](#operations) procedures for removing a node and replacing a
+failed one.
 
 Edition and version differences you may run into:
 
@@ -569,6 +601,9 @@ Edition and version differences you may run into:
   `max_ttl` need Enterprise Edition.
 - **Since 7.6**, `durability_min_level` above `none` needs enough data nodes
   to honour it, so a single node only accepts `none`.
+- **Community 7.6.2**'s `couchbase-cli rebalance` and `failover` fail with
+  "Unable to get the HTTPS port"; use the
+  [REST equivalents](#when-couchbase-cli-rebalance-or-failover-fails).
 
 ## Limitations
 
