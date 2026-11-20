@@ -18,7 +18,7 @@ mod 'puppetlabs-stdlib', '9.7.0'
 
 mod 'couchbase',
   git: 'https://github.com/miklinux/puppet-couchbase.git',
-  tag: 'v0.1.0'
+  tag: 'v0.1.1'
 ```
 
 * The module name (`'couchbase'`) must stay as it is. It becomes the
@@ -36,7 +36,7 @@ automatically (pluginsync).
 
 ```sh
 puppet module install puppetlabs-stdlib --version 9.7.0
-git clone --branch v0.1.0 https://github.com/miklinux/puppet-couchbase.git /etc/puppetlabs/code/environments/production/modules/couchbase
+git clone --branch v0.1.1 https://github.com/miklinux/puppet-couchbase.git /etc/puppetlabs/code/environments/production/modules/couchbase
 ```
 
 ## How Puppet talks to Couchbase
@@ -104,6 +104,11 @@ couchbase_user { 'webapp':
   roles    => ['data_reader[sessions]', 'data_writer[sessions]'],
 }
 ```
+
+`services` takes the names used by the web UI and `couchbase-cli`
+(`data`, `query`, `index`, `search`, `analytics`, `eventing`, `backup`) or
+the REST API names (`kv`, `n1ql`, `index`, `fts`, `cbas`, `eventing`,
+`backup`). Friendly names are translated, and both forms can be mixed.
 
 Everything can also come from Hiera:
 

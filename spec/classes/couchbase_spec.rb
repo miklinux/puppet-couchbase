@@ -99,6 +99,24 @@ describe 'couchbase' do
     end
   end
 
+  context 'with UI / couchbase-cli service names' do
+    let(:node) { 'standalone.example.com' }
+    let(:facts) { node_facts('standalone.example.com', '10.0.0.50') }
+    let(:params) { { admin_password: 'changeme-please', services: ['data', 'query', 'index', 'search'] } }
+
+    # Passed through as declared; couchbase_cluster translates them to REST
+    # names on the agent (see the type spec).
+    it { is_expected.to contain_couchbase_cluster('couchbase').with_services(%w[data query index search]) }
+  end
+
+  context 'with an unknown service name' do
+    let(:node) { 'standalone.example.com' }
+    let(:facts) { node_facts('standalone.example.com', '10.0.0.50') }
+    let(:params) { { admin_password: 'changeme-please', services: ['data', 'cache'] } }
+
+    it { is_expected.to compile.and_raise_error(%r{services}) }
+  end
+
   context 'as a single node (no cluster_nodes)' do
     let(:node) { 'standalone.example.com' }
     let(:facts) { node_facts('standalone.example.com', '10.0.0.50') }

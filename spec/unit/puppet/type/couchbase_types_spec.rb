@@ -55,6 +55,15 @@ describe 'couchbase types' do
   end
 
   describe Puppet::Type.type(:couchbase_cluster) do
+    it 'translates UI / couchbase-cli service names to REST names' do
+      c = described_class.new(title: 'c', services: ['data', 'Query', 'index', 'search', 'analytics', 'eventing', 'backup'])
+      expect(c[:services]).to eq(%w[kv n1ql index fts cbas eventing backup])
+    end
+
+    it 'accepts REST names and mixed names, without duplicates' do
+      expect(described_class.new(title: 'c', services: ['kv', 'data', 'n1ql'])[:services]).to eq(%w[kv n1ql])
+    end
+
     it 'validates services' do
       expect { described_class.new(title: 'c', services: ['kv', 'nope']) }.to raise_error(Puppet::ResourceError)
     end

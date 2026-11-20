@@ -94,15 +94,29 @@ Puppet::Type.newtype(:couchbase_cluster) do
   end
 
   newparam(:services) do
-    desc 'Services to run on this node (only used at initialisation): kv, n1ql, index, fts, eventing, cbas, backup.'
+    desc 'Services to run on this node (used when it creates or joins the cluster). Accepts the names used by ' \
+         'the UI and couchbase-cli (data, query, index, search, analytics, eventing, backup) or the REST API ' \
+         'names (kv, n1ql, index, fts, cbas, eventing, backup); friendly names are translated to REST names.'
     defaultto ['kv']
+
+    # UI / couchbase-cli name => REST API name (locals: captured by the
+    # validate/munge closures, unlike constants in a block).
+    aliases = { 'data' => 'kv', 'query' => 'n1ql', 'search' => 'fts', 'analytics' => 'cbas' }.freeze
+    rest_names = %w[kv n1ql index fts eventing cbas backup].freeze
+
     validate do |value|
-      allowed = %w[kv n1ql index fts eventing cbas backup]
       Array(value).each do |svc|
-        raise ArgumentError, "Unknown service '#{svc}', expected one of #{allowed.join(', ')}" unless allowed.include?(svc.to_s)
+        name = svc.to_s.strip.downcase
+        next if rest_names.include?(name) || aliases.key?(name)
+
+        raise ArgumentError, "Unknown service '#{svc}', expected one of " \
+                             "#{(aliases.keys + rest_names).uniq.join(', ')}"
       end
     end
-    munge { |value| Array(value).map(&:to_s).uniq }
+
+    munge do |value|
+      Array(value).map { |svc| name = svc.to_s.strip.downcase; aliases.fetch(name, name) }.uniq
+    end
   end
 
   newparam(:index_storage_mode) do

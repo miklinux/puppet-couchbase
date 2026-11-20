@@ -51,7 +51,10 @@
 # @param rebalance_timeout
 #   Seconds to wait for a rebalance.
 # @param services
-#   Services run by this node (used at initialisation).
+#   Services run by this node (used when it creates or joins the cluster).
+#   Either the UI / couchbase-cli names (data, query, index, search,
+#   analytics, eventing, backup) or the REST API names (kv, n1ql, index,
+#   fts, cbas, eventing, backup); both can be mixed.
 # @param index_storage_mode
 #   Index storage mode (used at initialisation).
 # @param data_ramsize
@@ -105,7 +108,7 @@ class couchbase (
   Optional[String[1]] $node_hostname = undef,
   Boolean $auto_rebalance = true,
   Integer[1] $rebalance_timeout = 3600,
-  Array[Enum['kv', 'n1ql', 'index', 'fts', 'eventing', 'cbas', 'backup'], 1] $services = ['kv', 'n1ql', 'index'],
+  Array[Enum['data', 'query', 'search', 'analytics', 'kv', 'n1ql', 'index', 'fts', 'eventing', 'cbas', 'backup'], 1] $services = ['kv', 'n1ql', 'index'],
   Optional[Enum['plasma', 'memory_optimized', 'forestdb']] $index_storage_mode = undef,
   Optional[Integer[256]] $data_ramsize = undef,
   Optional[Integer[256]] $index_ramsize = undef,
