@@ -1,4 +1,4 @@
-# couchbase
+# puppet-couchbase
 
 A Puppet module that installs **Couchbase Server** and manages it end to end:
 single nodes or clusters of any size, buckets, users, groups and role-based
