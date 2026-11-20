@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    # Weekly, to catch breakage from new Puppet, stdlib or image releases.
+    - cron: '17 4 * * 1'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    name: Unit (Puppet ${{ matrix.puppet }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { puppet: '7', ruby: '2.7', without: 'rubocop' }
+          - { puppet: '8', ruby: '3.2', without: '' }
+    env:
+      PUPPET_GEM_VERSION: '~> ${{ matrix.puppet }}.0'
+      BUNDLE_WITHOUT: ${{ matrix.without }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+          bundler-cache: true
+      - name: Syntax, lint and metadata
+        run: bundle exec rake syntax lint metadata_lint
+      - name: Unit, catalog and provider tests
+        run: bundle exec rake spec
+
+  single:
+    name: Single node (${{ matrix.image }})
+    needs: unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - community-6.6.0
+          - community-7.0.2
+          - community-7.1.1
+          - community-7.2.4
+          - community-7.6.2
+          - community-8.0.2
+          - enterprise-7.6.6
+    env:
+      PUPPET_GEM_VERSION: '~> 8.0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: true
+      - name: Create, change and remove every resource type
+        run: bundle exec ruby spec/acceptance/docker_matrix.rb couchbase/server:${{ matrix.image }}
+
+  cluster:
+    name: Cluster (${{ matrix.image }})
+    needs: unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - community-6.6.0
+          - community-7.0.2
+          - community-7.1.1
+          - community-7.2.4
+          - community-7.6.2
+          - community-8.0.2
+          - enterprise-7.6.6
+    env:
+      PUPPET_GEM_VERSION: '~> 8.0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: true
+      - name: Four-node bootstrap, joins, scale out, removal and replacement
+        run: bundle exec ruby spec/acceptance/docker_cluster.rb couchbase/server:${{ matrix.image }}

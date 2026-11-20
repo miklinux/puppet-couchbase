@@ -9,5 +9,9 @@ group :development, :test do
   gem 'rspec-puppet', '>= 4.0'
   gem 'puppet-lint', '>= 4.0'
   gem 'metadata-json-lint'
+end
+
+# Needs a newer Ruby than Puppet 7's; skipped there with BUNDLE_WITHOUT=rubocop.
+group :rubocop do
   gem 'rubocop', require: false
 end

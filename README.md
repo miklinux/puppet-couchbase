@@ -1,5 +1,7 @@
 # puppet-couchbase
 
+[![CI](https://github.com/miklinux/puppet-couchbase/actions/workflows/ci.yml/badge.svg)](https://github.com/miklinux/puppet-couchbase/actions/workflows/ci.yml)
+
 A Puppet module that installs **Couchbase Server** and manages it end to end:
 single nodes or clusters of any size, buckets, users, groups and role-based
 access control. It uses native Puppet types, so every setting is idempotent,
@@ -674,3 +676,16 @@ ruby spec/acceptance/docker_cluster.rb [--rmi] couchbase/server:enterprise-7.6.3
 ```
 
 `--rmi` deletes each image after its test.
+
+### Continuous integration
+
+[GitHub Actions](.github/workflows/ci.yml) runs on every push to `main`, on
+pull requests, weekly, and on demand:
+
+- **Unit**: syntax, lint, metadata and the spec suite, on Puppet 7 (Ruby 2.7)
+  and Puppet 8 (Ruby 3.2).
+- **Single node** and **Cluster**: the two acceptance tests above, one job
+  per Couchbase image: Community 6.6.0, 7.0.2, 7.1.1, 7.2.4, 7.6.2 and 8.0.2,
+  and Enterprise 7.6.6. They start once the unit tests pass.
+
+To test another image, add it to the `image` lists in the workflow.
