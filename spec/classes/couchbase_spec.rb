@@ -210,6 +210,42 @@ describe 'couchbase' do
     end
   end
 
+  context 'with settings' do
+    let(:node) { 'standalone.example.com' }
+    let(:facts) { node_facts('standalone.example.com', '10.0.0.50') }
+    let(:params) do
+      { admin_password: 'changeme-please',
+        settings: { 'auto_failover' => { 'enabled' => true, 'timeout' => 60 }, 'xdcr' => { 'goMaxProcs' => 8 } } }
+    end
+
+    it { is_expected.to compile.with_all_deps }
+    it { is_expected.to contain_couchbase_settings('auto_failover').with_settings('enabled' => true, 'timeout' => 60) }
+    it { is_expected.to contain_couchbase_settings('xdcr').with_settings('goMaxProcs' => 8) }
+  end
+
+  context 'with XDCR' do
+    let(:node) { 'standalone.example.com' }
+    let(:facts) { node_facts('standalone.example.com', '10.0.0.50') }
+    let(:params) do
+      { admin_password: 'changeme-please',
+        buckets: { 'orders' => { 'ram_quota' => 256 } },
+        xdcr_remotes: { 'dr' => { 'hostname' => 'cb01.dr.example.com', 'username' => 'xdcr', 'password' => sensitive('xdcr-pass') } },
+        xdcr_replications: { 'orders to dr' => { 'from_bucket' => 'orders', 'to_cluster' => 'dr' } } }
+    end
+
+    it { is_expected.to compile.with_all_deps }
+    it { is_expected.to contain_couchbase_xdcr_remote('dr').with(hostname: 'cb01.dr.example.com', username: 'xdcr') }
+    it { is_expected.to contain_couchbase_xdcr_replication('orders to dr').with(from_bucket: 'orders', to_cluster: 'dr') }
+  end
+
+  context 'with an unknown settings group' do
+    let(:node) { 'standalone.example.com' }
+    let(:facts) { node_facts('standalone.example.com', '10.0.0.50') }
+    let(:params) { { admin_password: 'changeme-please', settings: { 'failover' => { 'enabled' => true } } } }
+
+    it { is_expected.to compile.and_raise_error(%r{'settings'}) }
+  end
+
   context 'as a single node (no cluster_nodes)' do
     let(:node) { 'standalone.example.com' }
     let(:facts) { node_facts('standalone.example.com', '10.0.0.50') }

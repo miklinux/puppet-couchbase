@@ -25,6 +25,9 @@ module PuppetX
     # The REST API could not be reached at all (refused, unreachable, ...).
     class ConnectionError < Error; end
 
+    # Request body to send as JSON rather than as form fields.
+    JSONBody = Struct.new(:object)
+
     # Small REST client for the Couchbase cluster management API (port 8091).
     #
     # Talks to the local node, by default http://127.0.0.1:8091.
@@ -220,6 +223,11 @@ module PuppetX
         parse(request(:post, path, params: params, ok: ok, auth: auth))
       end
 
+      # POSTs `object` as a JSON document instead of form fields.
+      def post_json(path, object, ok: [200, 202])
+        parse(request(:post, path, params: JSONBody.new(object), ok: ok))
+      end
+
       def put(path, params = {}, ok: [200, 202], auth: true)
         parse(request(:put, path, params: params, ok: ok, auth: auth))
       end
@@ -284,7 +292,10 @@ module PuppetX
         }.fetch(method)
         req = klass.new(@url.path.chomp('/') + path)
         req['Accept'] = 'application/json'
-        if params && !%i[get delete].include?(method)
+        if params.is_a?(JSONBody)
+          req['Content-Type'] = 'application/json'
+          req.body = JSON.generate(params.object)
+        elsif params && !%i[get delete].include?(method)
           req['Content-Type'] = 'application/x-www-form-urlencoded'
           req.body = encode_form(params)
         end

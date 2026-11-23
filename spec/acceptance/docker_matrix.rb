@@ -64,9 +64,51 @@ def acl(label, role, ensure_value = 'present')
   "couchbase_acl { '#{label}': #{attrs.map { |k, v| "#{k} => '#{v}'" }.join(', ')} }"
 end
 
+# Cluster-wide settings: every group this server has, set away from the
+# defaults on create and changed again on change (stage :create / :change).
+def settings_values(f, stage)
+  create = stage == :create
+  failover = create ? { 'enabled' => true, 'timeout' => 60 } : { 'enabled' => false, 'timeout' => 30 }
+  failover['failoverOnDataDiskIssues'] = { 'enabled' => create, 'timePeriod' => 60 } if f[:enterprise] && create
+  groups = {
+    'auto_failover' => failover,
+    'auto_reprovision' => { 'enabled' => true, 'maxNodes' => create ? 2 : 1 },
+    'rebalance' => { 'rebalanceMovesPerNode' => create ? 8 : 4 },
+    'data' => { 'num_reader_threads' => create ? 8 : 4, 'num_writer_threads' => create ? 8 : 4 },
+    'query' => { 'queryTmpSpaceSize' => create ? 2048 : 4096, 'queryLogLevel' => create ? 'warn' : 'info' },
+    'query_curl_access' => {
+      'all_access' => false,
+      'allowed_urls' => create ? ['https://api.example.com'] : ['https://api.example.com', 'https://b.example.com'],
+    },
+    'index' => { 'logLevel' => create ? 'warn' : 'info', 'indexerThreads' => create ? 2 : 4 },
+    'xdcr' => { 'goMaxProcs' => create ? 6 : 4 },
+  }
+  groups['retry_rebalance'] = { 'enabled' => create, 'afterTimePeriod' => 600, 'maxAttempts' => 2 } if f[:enterprise]
+  groups['resource_management'] = { 'diskUsage' => { 'enabled' => true, 'maximum' => create ? 90 : 80 } } if f[:v8]
+  groups
+end
+
+def pp_value(value)
+  case value
+  when Hash then "{ #{value.map { |k, v| "'#{k}' => #{pp_value(v)}" }.join(', ')} }"
+  when Array then "[#{value.map { |v| pp_value(v) }.join(', ')}]"
+  when String then "'#{value}'"
+  else value.to_s
+  end
+end
+
+def settings_manifest(f, stage)
+  settings_values(f, stage).map { |g, v| "couchbase_settings { '#{g}': settings => #{pp_value(v)} }" }.join("\n")
+end
+
+def settings_changes(f)
+  settings_values(f, :create).keys.map { |g| "Couchbase_settings[#{g}]/settings" }
+end
+
 def create_manifest(f)
   <<~PP
     #{CLUSTER}
+    #{settings_manifest(f, :create)}
     couchbase_bucket { 'data':
       ram_quota            => 128,
       replicas             => 1,
@@ -98,11 +140,12 @@ def create_changes(f)
     'Couchbase_bucket[data]/ensure', 'Couchbase_bucket[cache]/ensure', 'Couchbase_bucket[doomed]/ensure',
     'Couchbase_user[app]/ensure', 'Couchbase_user[svc]/ensure', 'Couchbase_user[doomed]/ensure',
     'Couchbase_acl[svc revoke]/ensure', 'Couchbase_acl[svc keep]/ensure'
-  ]
+  ] + settings_changes(f)
 end
 
 def change_manifest(f)
   <<~PP
+    #{settings_manifest(f, :change)}
     couchbase_cluster { 'matrix':
       cluster_name  => 'matrix-renamed',
       data_ramsize  => 768,
@@ -151,7 +194,7 @@ def change_changes(f)
   ]
   list += ['Couchbase_bucket[data]/max_ttl', 'Couchbase_bucket[cache]/max_ttl'] if f[:enterprise]
   list << 'Couchbase_bucket[data]/durability_min_level' if f[:durability]
-  list
+  list + settings_changes(f)
 end
 
 class Failure < StandardError; end
@@ -238,7 +281,7 @@ def test_image(image)
       roles = get_json('/settings/rbac/roles').map { |r| r['role'] }.uniq
       version = pools['implementationVersion'].split('.').first(2).map(&:to_i)
       f = { enterprise: pools['isEnterprise'], roles: role_plan(roles, pools['implementationVersion']),
-            durability: (version <=> [7, 6]).negative? }
+            durability: (version <=> [7, 6]).negative?, v8: version.first >= 8 }
       puts "  roles      #{roles.size} available, using #{f[:roles][:app_create].join(', ')}"
 
       expect_apply(work, 'create', create_manifest(f), create_changes(f))
@@ -259,6 +302,10 @@ def test_image(image)
       check('bucket data resized to 200MB', buckets.dig('data', 'quota', 'rawRAM') == 200 * 1024 * 1024)
       check('bucket doomed deleted', !buckets.key?('doomed'))
       check('cluster renamed', get_json('/pools/default')['clusterName'] == 'matrix-renamed')
+      check('auto-failover disabled', get_json('/settings/autoFailover')['enabled'] == false)
+      check('XDCR maximum processes is 4', get_json('/settings/replications')['goMaxProcs'] == 4)
+      check('query temp space is 4096MB', get_json('/settings/querySettings')['queryTmpSpaceSize'] == 4096)
+      check('CURL() allows two URLs', get_json('/settings/querySettings/curlWhitelist')['allowed_urls'].size == 2)
     ensure
       system('docker', 'rm', '-f', name, out: File::NULL, err: File::NULL)
     end

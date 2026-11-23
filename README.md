@@ -14,6 +14,9 @@ reports exactly what changed, and works with `puppet resource`.
   (bucket sizes, passwords, roles and more).
 - **Two ways to grant access:** a complete role list per user, or individual
   grants declared wherever they belong.
+- **XDCR**: remote cluster references and replications, with their settings.
+- **Settings** from the web console's Settings page: auto-failover,
+  rebalance, data, query, index and XDCR settings.
 - **Community and Enterprise**, Couchbase Server 6.6 through 8.0.
 
 ## Contents
@@ -22,6 +25,8 @@ reports exactly what changed, and works with `puppet resource`.
 - [Installation](#installation)
 - [Quick start](#quick-start)
 - [Managing data and access](#managing-data-and-access)
+- [Settings](#settings)
+- [XDCR](#xdcr)
 - [Clusters](#clusters)
 - [Operations](#operations)
 - [Reference](#reference)
@@ -251,6 +256,134 @@ couchbase_group { 'developers':
   ldap_group_ref => 'cn=developers,ou=groups,dc=example,dc=com',   # optional
 }
 ```
+
+## Settings
+
+The settings on the web console's **Settings → General** page are managed with
+`settings`: one entry per group, each holding the fields to manage.
+Field names are those of the Couchbase REST API. Only the fields you list are
+managed; everything else keeps its current value.
+
+```yaml
+couchbase::settings:
+  auto_failover:                    # Node Availability
+    enabled: true
+    timeout: 120
+  auto_reprovision:                 # For Ephemeral Buckets
+    enabled: true
+    maxNodes: 1
+  rebalance:                        # Advanced Rebalance Settings
+    rebalanceMovesPerNode: 4
+  data:                             # Advanced Data Settings
+    num_reader_threads: 'default'      # 'balanced' on 8.0, or a number
+    num_writer_threads: 'default'
+  query:                            # Advanced Query Settings
+    queryTmpSpaceSize: 5120
+    queryLogLevel: 'info'
+  query_curl_access:                # Advanced Query Settings: CURL() function access
+    all_access: false
+    allowed_urls: ['https://api.example.com']
+  index:                            # Advanced Index Settings
+    indexerThreads: 0
+    logLevel: 'info'
+  xdcr:                             # XDCR Maximum Processes
+    goMaxProcs: 4
+```
+
+| Group | Web console | REST endpoint |
+|---|---|---|
+| `auto_failover` | Node Availability | `/settings/autoFailover` |
+| `auto_reprovision` | For Ephemeral Buckets | `/settings/autoReprovision` |
+| `rebalance` | Advanced Rebalance Settings | `/settings/rebalance` |
+| `retry_rebalance` | Advanced Rebalance Settings: retry (Enterprise) | `/settings/retryRebalance` |
+| `data` | Advanced Data Settings: threads | `/pools/default/settings/memcached/global` |
+| `resource_management` | Advanced Data Settings: disk usage limit (8.0+) | `/settings/resourceManagement` |
+| `query` | Advanced Query Settings | `/settings/querySettings` |
+| `query_curl_access` | Advanced Query Settings: CURL() function access | `/settings/querySettings/curlWhitelist` |
+| `index` | Index Storage Mode, Advanced Index Settings | `/settings/indexes` |
+| `xdcr` | XDCR Maximum Processes and other XDCR defaults | `/settings/replications` |
+
+To see the fields a group has on your version, read its endpoint:
+
+```sh
+curl -s -u admin:'changeme-please' http://localhost:8091/settings/autoFailover
+# {"enabled":true,"timeout":120,"count":0,"failoverOnDataDiskIssues":{"enabled":false,"timePeriod":120},...}
+```
+
+Nested fields are nested hashes, for example (Enterprise Edition):
+
+```yaml
+couchbase::settings:
+  auto_failover:
+    enabled: true
+    timeout: 60
+    failoverOnDataDiskIssues: { enabled: true, timePeriod: 120 }
+```
+
+Good to know:
+
+- While `enabled` is `false` in `auto_failover`, `auto_reprovision` or
+  `retry_rebalance`, Couchbase ignores the group's other fields, and so does
+  Puppet.
+- A field or group your version or edition doesn't have fails that group
+  with a clear error, instead of being retried on every run.
+- The index storage mode can't change while the cluster has index nodes, and
+  Community Edition only supports `forestdb`. Set it with `index_storage_mode`
+  when the cluster is created.
+- Settings work the same on a single node and in a cluster. In a cluster
+  Couchbase shares them between all members, so give every member the same
+  values, as with the other shared data.
+
+## XDCR
+
+Cross datacenter replication needs two things on the source cluster: a
+reference to the remote cluster, and one replication per bucket.
+
+```yaml
+couchbase::xdcr_remotes:
+  dr:
+    hostname: 'cb01.dr.example.com'
+    username: 'xdcr'
+    password: ENC[PKCS7,...]          # or a Sensitive value
+
+couchbase::xdcr_replications:
+  'orders to DR':
+    from_bucket: 'orders'
+    to_cluster: 'dr'                  # the reference above
+    # to_bucket: 'orders'             # defaults to from_bucket
+    settings:
+      workerBatchSize: 1000
+      # compressionType: 'Auto'       # Enterprise Edition
+```
+
+The user on the remote cluster needs the **XDCR Inbound** role on the target
+buckets (or `admin` on Community Edition), and the target buckets must
+already exist there.
+
+- **Settings** are named as in the REST API
+  (`/settings/replications/<id>`), for example `compressionType`,
+  `networkUsageLimit`, `filterExpression` or `priority`. Only the ones you
+  list are managed. Community Edition only allows some of them, and
+  Couchbase's error says which. Defaults for new replications are in the `xdcr`
+  [settings](#settings) group.
+- **Pausing:** `paused: true` pauses the replication; set it back to resume.
+- **Filters** (Enterprise Edition): changing `filterExpression` makes
+  Couchbase replicate the bucket again from the start, so that documents
+  matching the new filter are sent too. Add `filterSkipRestream: true` to
+  apply the filter only to future changes.
+- **Passwords** are never reported by Couchbase, so Puppet can't compare
+  them. It sends the password again when another attribute of the reference
+  changes, or when Couchbase reports that the remote cluster rejects the
+  stored one (7.x and later; this takes up to a minute after the change on
+  the remote side).
+- **Encryption** (Enterprise Edition): set `secure_type` to `half` or `full`
+  and `certificate` to the remote cluster's CA certificate.
+- **Removing:** set `ensure: 'absent'` on both; Puppet removes the
+  replication first, since Couchbase refuses to remove a reference that is
+  still in use.
+
+Declare XDCR on every member of the source cluster, like the other shared
+data; only the first run that needs a change makes it.
 
 ## Clusters
 
@@ -505,12 +638,14 @@ left as they are.
 | Parameter | Default | Description |
 |---|---|---|
 | `buckets`, `users`, `groups`, `acls` | `{}` | Resources to declare, as `title => attributes` hashes. See the types below. |
+| `xdcr_remotes`, `xdcr_replications` | `{}` | XDCR remote cluster references and replications. See [XDCR](#xdcr). |
+| `settings` | `{}` | Settings from the web console's Settings page, as group `=>` fields. See [Settings](#settings). |
 | `api_url` | `'http://127.0.0.1:8091'` | The node's REST API. |
 | `api_timeout` | `180` | Seconds to wait for the REST API, for example after installation. |
 
 ### Types
 
-Every type supports `ensure => 'present'` or `'absent'` (except `couchbase_cluster`)
+Every type supports `ensure => 'present'` or `'absent'` (except `couchbase_cluster` and `couchbase_settings`)
 and `puppet resource`, for example `puppet resource couchbase_user`.
 
 **`couchbase_bucket`**
@@ -565,12 +700,39 @@ The title is a free-form label.
 **`couchbase_cluster`** is declared by the class; parameters such as
 `cluster_nodes`, `services` and the memory quotas map to its attributes.
 
+**`couchbase_xdcr_remote`**: the title is the reference's name.
+
+| Attribute | Values | Notes |
+|---|---|---|
+| `hostname` | address, optionally `:port` | Any node of the remote cluster. Port 8091 by default. |
+| `username`, `password` | credentials on the remote cluster | The password is sent again only when needed (see [XDCR](#xdcr)). |
+| `secure_type` | `none`, `half`, `full` | Encryption needs Enterprise Edition. Default `none`. |
+| `certificate` | PEM | The remote cluster's CA certificate, for `half` or `full`. |
+| `client_certificate`, `client_key` | PEM | Certificate authentication with `full`. |
+
+**`couchbase_xdcr_replication`**: the title is a free-form label.
+
+| Attribute | Values | Notes |
+|---|---|---|
+| `from_bucket` | local bucket | Required. |
+| `to_cluster` | `couchbase_xdcr_remote` name | Required. |
+| `to_bucket` | bucket on the remote cluster | Defaults to `from_bucket`. |
+| `paused` | `true`, `false` | Default `false`. |
+| `settings` | hash of REST fields | Only these fields are managed. |
+
+**`couchbase_settings`**: the title is the settings group.
+
+| Attribute | Values | Notes |
+|---|---|---|
+| `settings` | hash of REST fields | Only these fields are managed. See [Settings](#settings). |
+
 ### Data types
 
 | Type | Values |
 |---|---|
 | `Couchbase::Service` | `data`, `query`, `search`, `analytics` (UI / couchbase-cli names) or `kv`, `n1ql`, `index`, `fts`, `eventing`, `cbas`, `backup` (REST names) |
 | `Couchbase::IndexStorageMode` | `plasma`, `memory_optimized`, `forestdb` |
+| `Couchbase::SettingsGroup` | `auto_failover`, `auto_reprovision`, `rebalance`, `retry_rebalance`, `data`, `resource_management`, `query`, `query_curl_access`, `index`, `xdcr` |
 
 ### Facts
 
@@ -681,6 +843,10 @@ ruby spec/acceptance/docker_matrix.rb [--rmi] couchbase/server:community-8.0.2
 # Four-node cluster: concurrent bootstrap and joins, scale out, removal,
 # and replacement of a failed node
 ruby spec/acceptance/docker_cluster.rb [--rmi] couchbase/server:enterprise-7.6.3
+
+# Two clusters: XDCR reference and replication, data flow, pause, password
+# change on the remote side, removal
+ruby spec/acceptance/docker_xdcr.rb [--rmi] couchbase/server:community-8.0.2
 ```
 
 `--rmi` deletes each image after its test.
@@ -693,7 +859,7 @@ are skipped), weekly, and on demand:
 
 - **Unit**: syntax, lint, metadata and the spec suite, on Puppet 7 (Ruby 2.7)
   and Puppet 8 (Ruby 3.2).
-- **Single node** and **Cluster**: the two acceptance tests above, one job
+- **Single node**, **Cluster** and **XDCR**: the acceptance tests above, one job
   per Couchbase image: Community 6.6.0, 7.0.2, 7.1.1, 7.2.4, 7.6.2 and 8.0.2,
   and Enterprise 7.6.6. They start once the unit tests pass.
 

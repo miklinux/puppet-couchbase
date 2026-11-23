@@ -108,4 +108,70 @@ describe 'couchbase types' do
       expect(described_class.new(title: 'prod')[:cluster_name]).to eq('prod')
     end
   end
+
+  describe Puppet::Type.type(:couchbase_settings) do
+    it 'accepts the known groups' do
+      expect(described_class.new(title: 'auto_failover', settings: { 'enabled' => true })[:settings]).to eq('enabled' => true)
+    end
+
+    it 'rejects unknown groups' do
+      expect { described_class.new(title: 'failover', settings: { 'enabled' => true }) }
+        .to raise_error(Puppet::ResourceError, %r{Unknown settings group 'failover'})
+    end
+
+    it 'is applied after the cluster exists' do
+      catalog = Puppet::Resource::Catalog.new
+      cluster = Puppet::Type.type(:couchbase_cluster).new(title: 'default')
+      xdcr = described_class.new(title: 'xdcr', settings: { 'goMaxProcs' => 8 })
+      [cluster, xdcr].each { |r| catalog.add_resource(r) }
+      expect(xdcr.autorequire.map(&:source)).to include(cluster)
+    end
+
+    it 'requires a non-empty hash' do
+      expect { described_class.new(title: 'xdcr', settings: {}) }.to raise_error(Puppet::ResourceError, %r{must not be empty})
+      expect { described_class.new(title: 'xdcr', settings: 'goMaxProcs=4') }.to raise_error(Puppet::ResourceError, %r{must be a hash})
+    end
+  end
+
+  describe Puppet::Type.type(:couchbase_xdcr_remote) do
+    it 'adds the default port' do
+      expect(described_class.new(title: 'dr', hostname: 'dr.example.com', username: 'u', password: 'p')[:hostname]).to eq('dr.example.com:8091')
+    end
+
+    it 'requires hostname, username and password to create a reference' do
+      expect { described_class.new(title: 'dr', username: 'u', password: 'p') }.to raise_error(Puppet::ResourceError, %r{hostname is required})
+      expect { described_class.new(title: 'dr', hostname: 'h', password: 'p') }.to raise_error(Puppet::ResourceError, %r{username is required})
+      expect { described_class.new(title: 'dr', hostname: 'h', username: 'u') }.to raise_error(Puppet::ResourceError, %r{password is required})
+    end
+
+    it 'needs nothing but the name to remove a reference' do
+      expect { described_class.new(title: 'dr', ensure: 'absent') }.not_to raise_error
+    end
+  end
+
+  describe Puppet::Type.type(:couchbase_xdcr_replication) do
+    it 'replicates to a bucket of the same name by default' do
+      r = described_class.new(title: 'x', from_bucket: 'orders', to_cluster: 'dr')
+      expect(r[:to_bucket]).to eq('orders')
+      expect(r.key).to eq('dr/orders/orders')
+    end
+
+    it 'requires from_bucket and to_cluster' do
+      expect { described_class.new(title: 'x', to_cluster: 'dr') }.to raise_error(Puppet::ResourceError, %r{from_bucket is required})
+      expect { described_class.new(title: 'x', from_bucket: 'orders') }.to raise_error(Puppet::ResourceError, %r{to_cluster is required})
+    end
+
+    it 'manages pausing through the paused attribute' do
+      expect { described_class.new(title: 'x', from_bucket: 'o', to_cluster: 'dr', settings: { 'pauseRequested' => true }) }
+        .to raise_error(Puppet::ResourceError, %r{use the paused attribute})
+    end
+
+    it 'refuses two resources managing the same replication' do
+      catalog = Puppet::Resource::Catalog.new
+      a = described_class.new(title: 'a', from_bucket: 'orders', to_cluster: 'dr')
+      b = described_class.new(title: 'b', from_bucket: 'orders', to_cluster: 'dr', to_bucket: 'orders')
+      [a, b].each { |r| catalog.add_resource(r) }
+      expect { a.pre_run_check }.to raise_error(Puppet::Error, %r{both manage the replication of orders})
+    end
+  end
 end

@@ -77,6 +77,16 @@
 #   Hash of couchbase_group resources.
 # @param acls
 #   Hash of couchbase_acl resources.
+# @param xdcr_remotes
+#   Hash of couchbase_xdcr_remote resources: XDCR remote cluster references.
+# @param xdcr_replications
+#   Hash of couchbase_xdcr_replication resources.
+# @param settings
+#   Settings from the web console's Settings page, as a hash of
+#   couchbase_settings groups (e.g. `auto_failover`, `query`, `xdcr`) to the
+#   REST fields to manage in each. Only the fields given are managed. They
+#   apply to the whole cluster, or to the single node. See the
+#   couchbase_settings type.
 #
 # @example
 #   class { 'couchbase':
@@ -121,6 +131,9 @@ class couchbase (
   Hash[String[1], Hash]                    $users              = {},
   Hash[String[1], Hash]                    $groups             = {},
   Hash[String[1], Hash]                    $acls               = {},
+  Hash[String[1], Hash]                    $xdcr_remotes       = {},
+  Hash[String[1], Hash]                    $xdcr_replications  = {},
+  Hash[Couchbase::SettingsGroup, Hash]     $settings           = {},
 ) {
   # Must match PuppetX::Couchbase::Client::DEFAULT_CONFIG_PATH.
   $client_config = '/etc/couchbase/puppet.json'
@@ -184,5 +197,14 @@ class couchbase (
   }
   $acls.each |$name, $attrs| {
     couchbase_acl { $name: * => $attrs }
+  }
+  $xdcr_remotes.each |$name, $attrs| {
+    couchbase_xdcr_remote { $name: * => $attrs }
+  }
+  $xdcr_replications.each |$name, $attrs| {
+    couchbase_xdcr_replication { $name: * => $attrs }
+  }
+  $settings.each |$group, $values| {
+    couchbase_settings { $group: settings => $values }
   }
 }
