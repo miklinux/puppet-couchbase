@@ -15,4 +15,9 @@ describe PuppetX::Couchbase::Client do
   it 'reports a missing config file clearly' do
     expect { described_class.from_config('/nonexistent/puppet.json') }.to raise_error(PuppetX::Couchbase::Error, %r{does not exist})
   end
+
+  it 'parses responses with duplicate keys, as Community 7.0 sends' do
+    res = instance_double(Net::HTTPOK, body: '{"interestingStats":{"couch_docs_data_size":1,"couch_docs_data_size":0}}')
+    expect(described_class.new.send(:parse, res)).to eq('interestingStats' => { 'couch_docs_data_size' => 0 })
+  end
 end

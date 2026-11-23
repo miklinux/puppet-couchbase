@@ -49,7 +49,7 @@ mod 'puppetlabs-stdlib', '9.7.0'
 
 mod 'couchbase',
   git: 'https://github.com/miklinux/puppet-couchbase.git',
-  tag: 'v0.3.0'
+  tag: 'v0.3.1'
 ```
 
 Pin a release with `tag:`, follow development with `branch: 'main'`, or pin a
@@ -59,7 +59,7 @@ Without r10k:
 
 ```sh
 puppet module install puppetlabs-stdlib --version 9.7.0
-git clone --branch v0.3.0 https://github.com/miklinux/puppet-couchbase.git \
+git clone --branch v0.3.1 https://github.com/miklinux/puppet-couchbase.git \
   /etc/puppetlabs/code/environments/production/modules/couchbase
 ```
 

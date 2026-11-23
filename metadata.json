@@ -1,6 +1,6 @@
 {
   "name": "miklinux-couchbase",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "author": "miklinux",
   "summary": "Installs Couchbase Server and manages clusters, buckets, users, groups and RBAC grants with native types talking to the local REST API.",
   "license": "Apache-2.0",

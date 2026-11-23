@@ -307,7 +307,10 @@ module PuppetX
         body = res.body.to_s
         return {} if body.strip.empty?
 
-        JSON.parse(body)
+        # Some servers repeat keys (Community 7.0 lists couch_docs_data_size
+        # twice in /pools/default), which json >= 3.0 rejects by default.
+        # Older json versions ignore the option and keep the last value.
+        JSON.parse(body, allow_duplicate_key: true)
       rescue JSON::ParserError
         body
       end
