@@ -1,10 +1,35 @@
 name: CI
 
 on:
+  # Only changes that can affect the module or its tests start a run; edits
+  # to README.md, LICENSE and the like do not. Keep both lists in sync.
   push:
     branches: [main]
-    tags: ['v*']
+    paths:
+      - 'manifests/**'
+      - 'types/**'
+      - 'lib/**'
+      - 'examples/**'
+      - 'spec/**'
+      - 'Gemfile'
+      - 'Rakefile'
+      - '.fixtures.yml'
+      - '.rspec'
+      - 'metadata.json'
+      - '.github/workflows/ci.yml'
   pull_request:
+    paths:
+      - 'manifests/**'
+      - 'types/**'
+      - 'lib/**'
+      - 'examples/**'
+      - 'spec/**'
+      - 'Gemfile'
+      - 'Rakefile'
+      - '.fixtures.yml'
+      - '.rspec'
+      - 'metadata.json'
+      - '.github/workflows/ci.yml'
   workflow_dispatch:
   schedule:
     # Weekly, to catch breakage from new Puppet, stdlib or image releases.
