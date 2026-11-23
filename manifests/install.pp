@@ -13,14 +13,14 @@ class couchbase::install {
       $local = "/var/cache/couchbase-puppet/${filename}"
 
       file { '/var/cache/couchbase-puppet':
-        ensure => directory,
+        ensure => 'directory',
         owner  => 'root',
         group  => 'root',
         mode   => '0755',
       }
 
       file { $local:
-        ensure   => file,
+        ensure   => 'file',
         source   => $couchbase::package_source,
         checksum => 'mtime',
         owner    => 'root',

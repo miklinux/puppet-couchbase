@@ -8,7 +8,7 @@ Puppet::Type.newtype(:couchbase_bucket) do
 
     @example
       couchbase_bucket { 'sessions':
-        ensure          => present,
+        ensure          => 'present',
         bucket_type     => 'ephemeral',
         ram_quota       => 512,
         replicas        => 1,

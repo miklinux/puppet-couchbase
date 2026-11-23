@@ -13,7 +13,7 @@ Puppet::Type.newtype(:couchbase_user) do
 
     @example
       couchbase_user { 'app':
-        ensure       => present,
+        ensure       => 'present',
         display_name => 'Application user',
         password     => Sensitive('s3cret'),
         roles        => ['data_reader[sessions]', 'data_writer[sessions:_default:_default]'],

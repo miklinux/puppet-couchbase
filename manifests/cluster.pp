@@ -5,7 +5,7 @@ class couchbase::cluster {
   assert_private()
 
   couchbase_cluster { $couchbase::cluster_name:
-    ensure             => present,
+    ensure             => 'present',
     hostname           => $couchbase::_node_hostname,
     cluster_nodes      => $couchbase::cluster_nodes,
     auto_rebalance     => $couchbase::auto_rebalance,

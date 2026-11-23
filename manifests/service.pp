@@ -6,7 +6,7 @@ class couchbase::service {
 
   if $couchbase::manage_service {
     service { $couchbase::service_name:
-      ensure => running,
+      ensure => 'running',
       enable => true,
     }
   }

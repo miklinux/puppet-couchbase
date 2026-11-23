@@ -18,14 +18,14 @@ class couchbase::config {
   }
 
   file { dirname($couchbase::client_config):
-    ensure => directory,
+    ensure => 'directory',
     owner  => 'root',
     group  => 'root',
     mode   => '0700',
   }
 
   file { $couchbase::client_config:
-    ensure    => file,
+    ensure    => 'file',
     owner     => 'root',
     group     => 'root',
     mode      => '0600',

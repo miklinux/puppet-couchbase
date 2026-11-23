@@ -124,14 +124,14 @@ def change_manifest(f)
       eviction_policy => 'nruEviction',
       #{f[:enterprise] ? 'max_ttl => 60,' : ''}
     }
-    couchbase_bucket { 'doomed': ensure => absent }
+    couchbase_bucket { 'doomed': ensure => 'absent' }
     couchbase_user { 'app':
       display_name => 'App v2',
       password     => Sensitive('app-pass-2'),
       roles        => #{pp_list(f[:roles][:app_change])},
     }
-    couchbase_user { 'svc': password => 'not-applied', password_management => on_create }
-    couchbase_user { 'doomed': ensure => absent }
+    couchbase_user { 'svc': password => 'not-applied', password_management => 'on_create' }
+    couchbase_user { 'doomed': ensure => 'absent' }
     #{acl('svc revoke', f[:roles][:acl_revoke], 'absent')}
     #{acl('svc keep', f[:roles][:acl_keep])}
     #{acl('svc add', f[:roles][:acl_add])}

@@ -49,17 +49,18 @@ mod 'puppetlabs-stdlib', '9.7.0'
 
 mod 'couchbase',
   git: 'https://github.com/miklinux/puppet-couchbase.git',
-  tag: 'v0.3.1'
+  branch: 'main'
 ```
 
-Pin a release with `tag:`, follow development with `branch: 'main'`, or pin a
-commit with `ref:`. Keep the module name `couchbase`.
+To pin a release instead, replace `branch: 'main'` with `tag: 'vX.Y.Z'`,
+using one of the [released tags](https://github.com/miklinux/puppet-couchbase/tags),
+or pin a commit with `ref:`. Keep the module name `couchbase`.
 
 Without r10k:
 
 ```sh
 puppet module install puppetlabs-stdlib --version 9.7.0
-git clone --branch v0.3.1 https://github.com/miklinux/puppet-couchbase.git \
+git clone --branch main https://github.com/miklinux/puppet-couchbase.git \
   /etc/puppetlabs/code/environments/production/modules/couchbase
 ```
 
@@ -142,7 +143,7 @@ couchbase_bucket { 'cache':
   flush_enabled   => true,
 }
 
-couchbase_bucket { 'legacy': ensure => absent }
+couchbase_bucket { 'legacy': ensure => 'absent' }
 ```
 
 - The minimum `ram_quota` is 100 MB, and the total of all buckets must fit in
@@ -178,7 +179,7 @@ role.
 
 **Passwords.** Puppet checks a password by logging in as the user, and resets
 it when it doesn't match. To set it only when the user is created, and let
-people change it afterwards, use `password_management => on_create`.
+people change it afterwards, use `password_management => 'on_create'`.
 Passwords are never shown in logs or reports.
 
 **Community Edition** only has three roles: `admin`, `ro_admin` and
@@ -216,7 +217,7 @@ couchbase_acl { 'monitoring is read-only admin':
 }
 
 couchbase_acl { 'support no longer queries':
-  ensure => absent,
+  ensure => 'absent',
   group  => 'support',
   role   => 'query_select',
   bucket => '*',               # every bucket
@@ -509,7 +510,7 @@ left as they are.
 
 ### Types
 
-Every type supports `ensure => present | absent` (except `couchbase_cluster`)
+Every type supports `ensure => 'present'` or `'absent'` (except `couchbase_cluster`)
 and `puppet resource`, for example `puppet resource couchbase_user`.
 
 **`couchbase_bucket`**
@@ -686,8 +687,9 @@ ruby spec/acceptance/docker_cluster.rb [--rmi] couchbase/server:enterprise-7.6.3
 
 ### Continuous integration
 
-[GitHub Actions](.github/workflows/ci.yml) runs on every push to `main`, on
-pull requests, weekly, and on demand:
+[GitHub Actions](.github/workflows/ci.yml) runs on pushes to `main` and on
+pull requests that change the module or its tests (documentation-only changes
+are skipped), weekly, and on demand:
 
 - **Unit**: syntax, lint, metadata and the spec suite, on Puppet 7 (Ruby 2.7)
   and Puppet 8 (Ruby 3.2).
