@@ -5,26 +5,26 @@
 class couchbase::config {
   assert_private()
 
-  $password = $couchbase::admin_password ? {
-    Sensitive => $couchbase::admin_password.unwrap,
-    default   => $couchbase::admin_password,
+  $password = $::couchbase::admin_password ? {
+    Sensitive => $::couchbase::admin_password.unwrap,
+    default   => $::couchbase::admin_password,
   }
 
   $settings = {
-    'url'      => $couchbase::api_url,
-    'username' => $couchbase::admin_user,
+    'url'      => $::couchbase::api_url,
+    'username' => $::couchbase::admin_user,
     'password' => $password,
-    'timeout'  => $couchbase::api_timeout,
+    'timeout'  => $::couchbase::api_timeout,
   }
 
-  file { dirname($couchbase::client_config):
+  file { dirname($::couchbase::client_config):
     ensure => 'directory',
     owner  => 'root',
     group  => 'root',
     mode   => '0700',
   }
 
-  file { $couchbase::client_config:
+  file { $::couchbase::client_config:
     ensure    => 'file',
     owner     => 'root',
     group     => 'root',

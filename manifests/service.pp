@@ -4,8 +4,8 @@
 class couchbase::service {
   assert_private()
 
-  if $couchbase::manage_service {
-    service { $couchbase::service_name:
+  if $::couchbase::manage_service {
+    service { $::couchbase::service_name:
       ensure => 'running',
       enable => true,
     }

@@ -7,9 +7,9 @@
 class couchbase::install {
   assert_private()
 
-  if $couchbase::manage_package {
-    if $couchbase::package_source {
-      $filename = basename($couchbase::package_source)
+  if $::couchbase::manage_package {
+    if $::couchbase::package_source {
+      $filename = basename($::couchbase::package_source)
       $local = "/var/cache/couchbase-puppet/${filename}"
 
       file { '/var/cache/couchbase-puppet':
@@ -21,12 +21,12 @@ class couchbase::install {
 
       file { $local:
         ensure   => 'file',
-        source   => $couchbase::package_source,
+        source   => $::couchbase::package_source,
         checksum => 'mtime',
         owner    => 'root',
         group    => 'root',
         mode     => '0644',
-        before   => Package[$couchbase::_package_name],
+        before   => Package[$::couchbase::_package_name],
       }
 
       $provider = $facts['os']['family'] ? {
@@ -34,14 +34,14 @@ class couchbase::install {
         default  => 'rpm',
       }
 
-      package { $couchbase::_package_name:
-        ensure   => $couchbase::package_ensure,
+      package { $::couchbase::_package_name:
+        ensure   => $::couchbase::package_ensure,
         provider => $provider,
         source   => $local,
       }
     } else {
-      package { $couchbase::_package_name:
-        ensure => $couchbase::package_ensure,
+      package { $::couchbase::_package_name:
+        ensure => $::couchbase::package_ensure,
       }
     }
   }
