@@ -13,16 +13,17 @@
 #   set up. Changing it later requires renaming the account in Couchbase
 #   first (see "Admin account" in the README).
 # @param edition
-#   `enterprise` or `community`; selects the default package name.
+#   `community` or `enterprise`; selects the default package name.
 # @param package_name
-#   Overrides the package name (default couchbase-server /
-#   couchbase-server-community).
+#   Overrides the package name (default couchbase-server-community, or
+#   couchbase-server for the Enterprise Edition).
 # @param package_ensure
 #   `installed`, `latest` or a version.
 # @param package_source
 #   Optional URL of a .deb/.rpm to install instead of using a configured
-#   repository, e.g.
-#   https://packages.couchbase.com/releases/7.6.3/couchbase-server-enterprise_7.6.3-linux_amd64.deb
+#   repository. Its edition must match `edition` (checked from the file
+#   name, unless `package_name` is set), e.g.
+#   https://packages.couchbase.com/releases/7.6.2/couchbase-server-community_7.6.2-linux_amd64.deb
 # @param manage_package
 #   Whether to install the package.
 # @param manage_service
@@ -36,7 +37,8 @@
 # @param manage_cluster
 #   Whether to initialise the node / manage cluster settings.
 # @param cluster_name
-#   Cluster name (cluster-wide: use the same value on every node).
+#   Cluster name shown in the web console (default `default`; cluster-wide:
+#   use the same value on every node).
 # @param cluster_nodes
 #   Addresses of all cluster members, identical on every node. The first one
 #   bootstraps the cluster; the others join it. Empty means single node.
@@ -92,41 +94,58 @@
 #   }
 class couchbase (
   Variant[String[6], Sensitive[String[6]]] $admin_password,
-  String[1] $admin_user = 'Administrator',
-  Enum['enterprise', 'community'] $edition = 'enterprise',
-  Optional[String[1]] $package_name = undef,
-  String[1] $package_ensure = 'installed',
-  Optional[Stdlib::HTTPUrl] $package_source = undef,
-  Boolean $manage_package = true,
-  Boolean $manage_service = true,
-  String[1] $service_name = 'couchbase-server',
-  Stdlib::HTTPUrl $api_url = 'http://127.0.0.1:8091',
-  Integer[1] $api_timeout = 180,
-  Boolean $manage_cluster = true,
-  String[1] $cluster_name = 'couchbase',
-  Array[String[1]] $cluster_nodes = [],
-  Optional[String[1]] $node_hostname = undef,
-  Boolean $auto_rebalance = true,
-  Integer[1] $rebalance_timeout = 3600,
-  Array[Enum['data', 'query', 'search', 'analytics', 'kv', 'n1ql', 'index', 'fts', 'eventing', 'cbas', 'backup'], 1] $services = ['kv', 'n1ql', 'index'],
-  Optional[Enum['plasma', 'memory_optimized', 'forestdb']] $index_storage_mode = undef,
-  Optional[Integer[256]] $data_ramsize = undef,
-  Optional[Integer[256]] $index_ramsize = undef,
-  Optional[Integer[256]] $fts_ramsize = undef,
-  Optional[Integer[256]] $eventing_ramsize = undef,
-  Optional[Integer[1024]] $analytics_ramsize = undef,
-  Hash[String[1], Hash] $buckets = {},
-  Hash[String[1], Hash] $users = {},
-  Hash[String[1], Hash] $groups = {},
-  Hash[String[1], Hash] $acls = {},
+  String[1]                                $admin_user         = 'Administrator',
+  Enum['enterprise', 'community']          $edition            = 'community',
+  Optional[String[1]]                      $package_name       = undef,
+  String[1]                                $package_ensure     = 'installed',
+  Optional[Stdlib::HTTPUrl]                $package_source     = undef,
+  Boolean                                  $manage_package     = true,
+  Boolean                                  $manage_service     = true,
+  String[1]                                $service_name       = 'couchbase-server',
+  Stdlib::HTTPUrl                          $api_url            = 'http://127.0.0.1:8091',
+  Integer[1]                               $api_timeout        = 180,
+  Boolean                                  $manage_cluster     = true,
+  String[1]                                $cluster_name       = 'default',
+  Array[String[1]]                         $cluster_nodes      = [],
+  Optional[String[1]]                      $node_hostname      = undef,
+  Boolean                                  $auto_rebalance     = true,
+  Integer[1]                               $rebalance_timeout  = 3600,
+  Array[Couchbase::Service, 1]             $services           = ['kv', 'n1ql', 'index'],
+  Optional[Couchbase::IndexStorageMode]    $index_storage_mode = undef,
+  Optional[Integer[256]]                   $data_ramsize       = undef,
+  Optional[Integer[256]]                   $index_ramsize      = undef,
+  Optional[Integer[256]]                   $fts_ramsize        = undef,
+  Optional[Integer[256]]                   $eventing_ramsize   = undef,
+  Optional[Integer[1024]]                  $analytics_ramsize  = undef,
+  Hash[String[1], Hash]                    $buckets            = {},
+  Hash[String[1], Hash]                    $users              = {},
+  Hash[String[1], Hash]                    $groups             = {},
+  Hash[String[1], Hash]                    $acls               = {},
 ) {
   # Must match PuppetX::Couchbase::Client::DEFAULT_CONFIG_PATH.
   $client_config = '/etc/couchbase/puppet.json'
 
-  $_package_name = pick($package_name, $edition ? {
-      'enterprise' => 'couchbase-server',
-      default      => 'couchbase-server-community',
-  })
+  # The packages Couchbase publishes for each edition. Enterprise is
+  # `couchbase-server`, even though its download file is named
+  # couchbase-server-enterprise_<version>...
+  $edition_packages = {
+    'community'  => 'couchbase-server-community',
+    'enterprise' => 'couchbase-server',
+  }
+  $_package_name = pick($package_name, $edition_packages[$edition])
+
+  # A downloaded file installs the package of its own edition; if that is
+  # not the package Puppet expects, it would reinstall the file on every run.
+  if $package_source and $package_name =~ Undef {
+    $source_edition = basename($package_source) ? {
+      /community/  => 'community',
+      /enterprise/ => 'enterprise',
+      default      => undef,
+    }
+    if $source_edition and $source_edition != $edition {
+      fail("couchbase: package_source ${basename($package_source)} is the ${source_edition} edition, but edition is '${edition}'; set couchbase::edition: ${source_edition}")
+    }
+  }
 
   $_node_hostname = $node_hostname.lest || {
     $cluster_nodes ? {

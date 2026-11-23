@@ -49,7 +49,7 @@ mod 'puppetlabs-stdlib', '9.7.0'
 
 mod 'couchbase',
   git: 'https://github.com/miklinux/puppet-couchbase.git',
-  tag: 'v0.2.1'
+  tag: 'v0.3.0'
 ```
 
 Pin a release with `tag:`, follow development with `branch: 'main'`, or pin a
@@ -59,7 +59,7 @@ Without r10k:
 
 ```sh
 puppet module install puppetlabs-stdlib --version 9.7.0
-git clone --branch v0.2.1 https://github.com/miklinux/puppet-couchbase.git \
+git clone --branch v0.3.0 https://github.com/miklinux/puppet-couchbase.git \
   /etc/puppetlabs/code/environments/production/modules/couchbase
 ```
 
@@ -467,10 +467,10 @@ is the only required parameter.
 
 | Parameter | Default | Description |
 |---|---|---|
-| `edition` | `'enterprise'` | `enterprise` or `community`. Selects the default package name. |
-| `package_name` | per edition | `couchbase-server` or `couchbase-server-community`. |
+| `edition` | `'community'` | `community` (package `couchbase-server-community`) or `enterprise` (package `couchbase-server`). Choose it when building a node: Puppet doesn't replace one edition's package with the other, and a cluster can't mix editions. |
+| `package_name` | per `edition` | Overrides the package name, for example for a package republished under another name. |
 | `package_ensure` | `'installed'` | `installed`, `latest` or a version. |
-| `package_source` | — | URL of a `.deb` or `.rpm` to install instead of using a repository. |
+| `package_source` | — | URL of a `.deb` or `.rpm` to install instead of using a repository. Set `edition` to match the file; a mismatch fails the catalog. |
 | `manage_package` | `true` | `false` when Couchbase is installed some other way. |
 | `manage_service` | `true` | `false` without systemd, for example in containers. |
 | `service_name` | `'couchbase-server'` | Name of the systemd service. |
@@ -480,7 +480,7 @@ is the only required parameter.
 | Parameter | Default | Description |
 |---|---|---|
 | `manage_cluster` | `true` | `false` when the cluster is created some other way. Buckets, users, groups and ACLs are still managed. |
-| `cluster_name` | `'couchbase'` | Name shown in the web console. |
+| `cluster_name` | `'default'` | Name shown in the web console. |
 | `cluster_nodes` | `[]` | All members, identical on every node; the first one creates the cluster. Empty for a single node. |
 | `node_hostname` | FQDN (`127.0.0.1` for a single node) | This node's address as the other members reach it. Must be one of `cluster_nodes`. |
 | `services` | `['kv', 'n1ql', 'index']` | This node's services: `data`, `query`, `index`, `search`, `analytics`, `eventing`, `backup`. The REST names (`kv`, `n1ql`, `fts`, `cbas`) work too. Applied when the node creates or joins the cluster. |
@@ -563,6 +563,13 @@ The title is a free-form label.
 
 **`couchbase_cluster`** is declared by the class; parameters such as
 `cluster_nodes`, `services` and the memory quotas map to its attributes.
+
+### Data types
+
+| Type | Values |
+|---|---|
+| `Couchbase::Service` | `data`, `query`, `search`, `analytics` (UI / couchbase-cli names) or `kv`, `n1ql`, `index`, `fts`, `eventing`, `cbas`, `backup` (REST names) |
+| `Couchbase::IndexStorageMode` | `plasma`, `memory_optimized`, `forestdb` |
 
 ### Facts
 
